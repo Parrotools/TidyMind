@@ -1,8 +1,22 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# TidyMind — 知识工作空间
 
-# Getting Started
+基于 [**React Native**](https://reactnative.dev) 的知识管理应用，UI 设计来自 [Figma 设计稿](https://figma.com/design/UTwDtr261uT6tPxo0Hjxdi)。
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## 功能特性
+- **首页** — 知识工作空间：搜索、快捷操作和统计概览
+- **文件** — 笔记管理：按类型筛选（全部/文字/链接/视频照片/录音）、标签、收藏、创建/编辑/删除
+- **AI 助手** — 对话式 AI 助手，支持快速提示和本地历史
+- **收藏** — 查看已收藏的笔记
+- **我的** — 个人资料、统计数据、导入/导出入口、设置
+
+## 设计系统
+UI 布局和组件基于 Figma 设计稿重构：
+- 色彩方案：灰度色系（#262626 / #4d4d4d / #b2b2b2）
+- 圆角：4px（标签）/ 8px（卡片）/ 12px（输入框）/ 16px（头像）/ 100px（胶囊按钮）
+- 底部导航：胶囊式活跃态指示器
+- 字体：系统默认（Figma 设计使用思源黑体）
+
+> **注意**: 请确保已完成 [环境配置](https://reactnative.dev/docs/set-up-your-environment) 指南。
 
 ## Step 1: Start Metro
 
