@@ -1,0 +1,15 @@
+export type RootStackParamList = {
+  Tabs: undefined;
+  Import: undefined;
+  Export: undefined;
+  Settings: undefined;
+  Assistant: undefined;
+  NoteEditor: { noteId?: string } | undefined;
+};
+
+export type TabParamList = {
+  Home: undefined;
+  Files: undefined;
+  Favorites: undefined;
+  Profile: undefined;
+};
