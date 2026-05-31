@@ -15,7 +15,6 @@ import {
   Pressable,
   StatusBar,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -72,7 +71,6 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const didInitialSnap = useRef(false);
   const activeIndex = state.index;
   const tabCount = state.routes.length;
-
   const pillLeft = useRef(new Animated.Value(0)).current;
 
   // Measure the row once so we can divide it into equal slices.
@@ -107,7 +105,7 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
       friction: 8,
       useNativeDriver: false,
     }).start();
-  }, [activeIndex, pillLeft, tabCount]);
+  }, [activeIndex, pillLeft, pillTargetFor, tabCount]);
 
   return (
     <View style={[tabStyles.container, { paddingBottom: insets.bottom }]}>
