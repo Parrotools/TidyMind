@@ -18,7 +18,8 @@ type AppStateContextValue = {
   upsertNote: (payload: UpsertNoteInput) => void;
   deleteNote: (noteId: string) => void;
   toggleFavorite: (noteId: string) => void;
-  addChatMessage: (role: ChatMessage['role'], content: string) => void;
+  addChatMessage: (role: ChatMessage['role'], content: string) => ChatMessage;
+  updateChatMessage: (id: string, content: string) => void;
   clearChat: () => void;
 };
 
@@ -118,17 +119,23 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const addChatMessage = (role: ChatMessage['role'], content: string) => {
+  const addChatMessage = (role: ChatMessage['role'], content: string): ChatMessage => {
     const now = new Date().toISOString();
-    setChatMessages(current => [
-      ...current,
-      {
-        id: createId(),
-        role,
-        content,
-        createdAt: now,
-      },
-    ]);
+    const msg: ChatMessage = {
+      id: createId(),
+      role,
+      content,
+      createdAt: now,
+    };
+    setChatMessages(current => [...current, msg]);
+    return msg;
+  };
+
+  /** 更新指定 ID 的消息内容（用于流式更新 AI 回复） */
+  const updateChatMessage = (id: string, content: string) => {
+    setChatMessages(current =>
+      current.map(m => (m.id === id ? { ...m, content } : m)),
+    );
   };
 
   const clearChat = () => {
@@ -144,6 +151,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       deleteNote,
       toggleFavorite,
       addChatMessage,
+      updateChatMessage,
       clearChat,
     }),
     [notes, chatMessages, isLoading],
