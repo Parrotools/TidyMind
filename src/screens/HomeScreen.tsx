@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -15,9 +14,10 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import NoteCard from '../components/NoteCard';
 import NoteEditorModal from '../components/NoteEditorModal';
+import { useSemanticSearch } from '../hooks/useSemanticSearch';
 import { RootStackParamList } from '../navigation/types';
 import { useAppState } from '../state/AppState';
-import { BorderRadius, Colors, Spacing, Typography } from '../theme/designTokens';
+import { BorderRadius, Colors, Spacing } from '../theme/designTokens';
 import { Note } from '../types/note';
 
 const QUICK_ACTIONS = [
@@ -30,37 +30,75 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { notes, isLoading, upsertNote, deleteNote, toggleFavorite } = useAppState();
+  const { notes, isLoading, upsertNote, deleteNote, toggleFavorite } =
+    useAppState();
+  const {
+    mode,
+    isSearching,
+    aiResults,
+    aiSummary,
+    error,
+    searchWithAI,
+    searchLocal,
+    clear,
+  } = useSemanticSearch();
+
   const [query, setQuery] = useState('');
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
 
+  // ── 搜索结果 ──────────────────────────────────────────────────────
+
+  const localResults = useMemo(() => {
+    if (!query.trim()) return [];
+    return searchLocal(query, notes);
+  }, [query, notes, searchLocal]);
+
   const filteredNotes = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    const sorted = [...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    if (!normalized) {
-      return sorted;
+    const sorted = [...notes].sort(
+      (a, b) => b.updatedAt.localeCompare(a.updatedAt),
+    );
+    if (mode === 'ai') {
+      return aiResults.map(r => r.note);
     }
-    return sorted.filter(note => {
-      const haystack = `${note.title} ${note.content} ${note.tags.join(' ')}`.toLowerCase();
-      return haystack.includes(normalized);
-    });
-  }, [notes, query]);
+    if (mode === 'keyword') {
+      return localResults;
+    }
+    return sorted;
+  }, [notes, mode, aiResults, localResults]);
+
+  // ── 统计 ──────────────────────────────────────────────────────────
 
   const stats = useMemo(() => {
     const lastUpdated = notes.reduce((latest, note) => {
-      if (!latest) {
-        return note.updatedAt;
-      }
+      if (!latest) return note.updatedAt;
       return note.updatedAt > latest ? note.updatedAt : latest;
     }, '');
-
     return {
       count: notes.length,
       favorites: notes.filter(note => note.isFavorite).length,
       lastUpdated,
     };
   }, [notes]);
+
+  // ── 搜索处理 ──────────────────────────────────────────────────────
+
+  const handleSearchSubmit = () => {
+    if (!query.trim()) return;
+    searchWithAI(query, notes);
+  };
+
+  const handleClearSearch = () => {
+    setQuery('');
+    clear();
+  };
+
+  const handleQueryChange = (text: string) => {
+    setQuery(text);
+    if (!text.trim()) clear();
+  };
+
+  // ── 笔记操作 ──────────────────────────────────────────────────────
 
   const handleOpenNew = () => {
     setEditingNote(null);
@@ -101,19 +139,12 @@ export default function HomeScreen() {
   };
 
   const handleQuickAction = (id: string) => {
-    if (id === 'import') {
-      navigation.navigate('Import');
-      return;
-    }
-    if (id === 'export') {
-      navigation.navigate('Export');
-      return;
-    }
-    if (id === 'assistant') {
-      navigation.navigate('Assistant');
-      return;
-    }
+    if (id === 'import') navigation.navigate('Import');
+    else if (id === 'export') navigation.navigate('Export');
+    else if (id === 'assistant') navigation.navigate('Assistant');
   };
+
+  // ── 渲染 ──────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -129,69 +160,126 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Search */}
-        <View style={styles.searchCard}>
-          <Text style={styles.searchIcon}>⌕</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="搜索笔记..."
-            placeholderTextColor={Colors.textTertiary}
-            value={query}
-            onChangeText={setQuery}
-          />
-        </View>
-
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.count}</Text>
-            <Text style={styles.statLabel}>笔记</Text>
+        {/* Search bar */}
+        <View style={styles.searchRow}>
+          <View style={styles.searchCard}>
+            <Text style={styles.searchIcon}>⌕</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder={
+                mode === 'idle'
+                  ? '搜索笔记...'
+                  : mode === 'keyword'
+                    ? '输入关键词过滤 — 按回车AI搜索'
+                    : 'AI 语义搜索结果'
+              }
+              placeholderTextColor={Colors.textTertiary}
+              value={query}
+              onChangeText={handleQueryChange}
+              onSubmitEditing={handleSearchSubmit}
+              returnKeyType="search"
+            />
+            {query.length > 0 && (
+              <Pressable onPress={handleClearSearch} hitSlop={8}>
+                <Text style={styles.clearIcon}>✕</Text>
+              </Pressable>
+            )}
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.favorites}</Text>
-            <Text style={styles.statLabel}>收藏</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>
-              {stats.lastUpdated
-                ? new Date(stats.lastUpdated).toLocaleDateString('zh-CN')
-                : '--'}
-            </Text>
-            <Text style={styles.statLabel}>最近更新</Text>
-          </View>
-        </View>
-
-        {/* Quick actions */}
-        <View style={styles.quickRow}>
-          {QUICK_ACTIONS.map(action => (
+          {query.trim().length > 0 && mode !== 'ai' && (
             <Pressable
-              key={action.id}
-              style={({ pressed }) => [
-                styles.quickAction,
-                pressed && styles.quickActionPressed,
-              ]}
-              onPress={() => handleQuickAction(action.id)}
+              style={styles.aiSearchButton}
+              onPress={handleSearchSubmit}
             >
-              <Text style={styles.quickText}>{action.label}</Text>
+              <Text style={styles.aiSearchText}>AI</Text>
             </Pressable>
-          ))}
+          )}
         </View>
 
-        {/* Recent notes section */}
+        {/* AI 搜索状态栏 */}
+        {mode === 'ai' && (
+          <View style={styles.aiStatusBar}>
+            {isSearching ? (
+              <View style={styles.aiStatusRow}>
+                <ActivityIndicator size="small" color={Colors.textOnDark} />
+                <Text style={styles.aiStatusText}>AI 正在分析...</Text>
+              </View>
+            ) : error ? (
+              <Text style={styles.aiErrorText}>{error}</Text>
+            ) : (
+              <Text style={styles.aiStatusText} numberOfLines={2}>
+                {aiSummary}
+              </Text>
+            )}
+            <Pressable onPress={handleClearSearch}>
+              <Text style={styles.aiBackText}>返回全部</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Stats (hidden when searching) */}
+        {mode !== 'ai' && (
+          <>
+            <View style={styles.statsRow}>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{stats.count}</Text>
+                <Text style={styles.statLabel}>笔记</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{stats.favorites}</Text>
+                <Text style={styles.statLabel}>收藏</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>
+                  {stats.lastUpdated
+                    ? new Date(stats.lastUpdated).toLocaleDateString('zh-CN')
+                    : '--'}
+                </Text>
+                <Text style={styles.statLabel}>最近更新</Text>
+              </View>
+            </View>
+
+            {/* Quick actions */}
+            <View style={styles.quickRow}>
+              {QUICK_ACTIONS.map(action => (
+                <Pressable
+                  key={action.id}
+                  style={({ pressed }) => [
+                    styles.quickAction,
+                    pressed && styles.quickActionPressed,
+                  ]}
+                  onPress={() => handleQuickAction(action.id)}
+                >
+                  <Text style={styles.quickText}>{action.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Section header */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>最近笔记</Text>
-          <Pressable onPress={handleOpenNew}>
-            <Text style={styles.sectionAction}>+ 新建</Text>
-          </Pressable>
+          <Text style={styles.sectionTitle}>
+            {mode === 'ai'
+              ? `AI 搜索结果 (${filteredNotes.length})`
+              : mode === 'keyword'
+                ? `匹配笔记 (${filteredNotes.length})`
+                : '最近笔记'}
+          </Text>
+          {mode === 'idle' && (
+            <Pressable onPress={handleOpenNew}>
+              <Text style={styles.sectionAction}>+ 新建</Text>
+            </Pressable>
+          )}
         </View>
 
+        {/* Note list */}
         {isLoading ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="small" color={Colors.active} />
           </View>
         ) : (
           <FlatList
-            data={filteredNotes.slice(0, 10)}
+            data={filteredNotes.slice(0, 20)}
             keyExtractor={item => item.id}
             renderItem={({ item }) => (
               <NoteCard
@@ -202,15 +290,25 @@ export default function HomeScreen() {
             )}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>还没有笔记</Text>
-                <Text style={styles.emptySubtitle}>
-                  捕捉第一个想法，开始构建你的知识库
+                <Text style={styles.emptyTitle}>
+                  {query ? '未找到匹配笔记' : '还没有笔记'}
                 </Text>
-                <Pressable style={styles.primaryButton} onPress={handleOpenNew}>
-                  <Text style={styles.primaryButtonText}>添加笔记</Text>
-                </Pressable>
+                <Text style={styles.emptySubtitle}>
+                  {query
+                    ? '尝试其他关键词或调整查询'
+                    : '捕捉第一个想法，开始构建你的知识库'}
+                </Text>
+                {!query && (
+                  <Pressable
+                    style={styles.primaryButton}
+                    onPress={handleOpenNew}
+                  >
+                    <Text style={styles.primaryButtonText}>添加笔记</Text>
+                  </Pressable>
+                )}
               </View>
             }
           />
@@ -229,14 +327,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.backgroundStart,
-  },
-  container: {
-    flex: 1,
-    paddingHorizontal: Spacing.lg,
-  },
+  safeArea: { flex: 1, backgroundColor: Colors.backgroundStart },
+  container: { flex: 1, paddingHorizontal: Spacing.lg },
   header: {
     marginTop: Spacing.md,
     marginBottom: Spacing.lg,
@@ -244,17 +336,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  appTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    lineHeight: 32,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginTop: Spacing.xs,
-  },
+  appTitle: { fontSize: 24, fontWeight: '700', color: Colors.textPrimary },
+  subtitle: { fontSize: 14, color: Colors.textSecondary, marginTop: Spacing.xs },
   avatar: {
     width: 44,
     height: 44,
@@ -263,30 +346,74 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
-    color: Colors.textOnDark,
-    fontWeight: '700',
-    fontSize: 16,
+  avatarText: { color: Colors.textOnDark, fontWeight: '700', fontSize: 16 },
+
+  // Search
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   searchCard: {
+    flex: 1,
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
   },
   searchIcon: {
     fontSize: 16,
     color: Colors.textTertiary,
     marginRight: Spacing.sm,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.textPrimary,
+  searchInput: { flex: 1, fontSize: 14, color: Colors.textPrimary },
+  clearIcon: { fontSize: 14, color: Colors.textTertiary, padding: Spacing.xs },
+  aiSearchButton: {
+    backgroundColor: Colors.active,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
   },
+  aiSearchText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textOnDark,
+  },
+
+  // AI status bar
+  aiStatusBar: {
+    backgroundColor: Colors.active,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  aiStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  aiStatusText: {
+    fontSize: 12,
+    color: Colors.textOnDark,
+    flex: 1,
+    lineHeight: 18,
+  },
+  aiErrorText: { fontSize: 12, color: '#fee2e2', flex: 1 },
+  aiBackText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textOnDark,
+    marginLeft: Spacing.md,
+  },
+
+  // Stats
   statsRow: {
     flexDirection: 'row',
     marginBottom: Spacing.lg,
@@ -299,16 +426,14 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     alignItems: 'center',
   },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
+  statValue: { fontSize: 18, fontWeight: '600', color: Colors.textPrimary },
   statLabel: {
     fontSize: 11,
     color: Colors.textSecondary,
     marginTop: Spacing.xs,
   },
+
+  // Quick actions
   quickRow: {
     flexDirection: 'row',
     gap: Spacing.md,
@@ -321,47 +446,29 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.inactive,
     alignItems: 'center',
   },
-  quickActionPressed: {
-    backgroundColor: Colors.active,
-  },
-  quickText: {
-    color: Colors.textOnDark,
-    fontWeight: '500',
-    fontSize: 14,
-  },
+  quickActionPressed: { backgroundColor: Colors.active },
+  quickText: { color: Colors.textOnDark, fontWeight: '500', fontSize: 14 },
+
+  // Section
   sectionHeader: {
     marginBottom: Spacing.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  sectionAction: {
-    color: Colors.active,
-    fontWeight: '500',
-    fontSize: 14,
-  },
-  listContent: {
-    paddingBottom: Spacing.xl,
-  },
-  loadingWrap: {
-    marginTop: Spacing.xl,
-  },
+  sectionTitle: { fontSize: 18, fontWeight: '600', color: Colors.textPrimary },
+  sectionAction: { color: Colors.active, fontWeight: '500', fontSize: 14 },
+
+  // List
+  listContent: { paddingBottom: Spacing.xl },
+  loadingWrap: { marginTop: Spacing.xl },
   emptyState: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     padding: Spacing.xl,
     alignItems: 'center',
   },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
+  emptyTitle: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary },
   emptySubtitle: {
     fontSize: 12,
     color: Colors.textSecondary,
@@ -375,9 +482,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
   },
-  primaryButtonText: {
-    color: Colors.textOnDark,
-    fontWeight: '600',
-    fontSize: 14,
-  },
+  primaryButtonText: { color: Colors.textOnDark, fontWeight: '600', fontSize: 14 },
 });

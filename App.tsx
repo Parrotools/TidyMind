@@ -7,7 +7,7 @@
  * @format
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   LayoutChangeEvent,
@@ -27,6 +27,7 @@ import AssistantScreen from './src/screens/AssistantScreen';
 import ExportScreen from './src/screens/ExportScreen';
 import FavoritesScreen from './src/screens/FavoritesScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import SplashScreen from './src/screens/SplashScreen';
 import ImportScreen from './src/screens/ImportScreen';
 import FilesScreen from './src/screens/FilesScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
@@ -84,18 +85,14 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     rowWidthRef.current = e.nativeEvent.layout.width;
   }, []);
 
-  /** Each tab occupies an equal horizontal slice; pill is centered in its slice */
-  const pillTargetFor = (index: number) => {
-    const sliceW = rowWidthRef.current / tabCount;
-    return sliceW * index + sliceW / 2 - FIXED_PILL_WIDTH / 2;
-  };
-
   useEffect(() => {
     if (rowWidthRef.current === 0) {
       return;
     }
 
-    const targetLeft = pillTargetFor(activeIndex);
+    // 每个 Tab 占据等宽的水平切片，胶囊居中
+    const sliceW = rowWidthRef.current / tabCount;
+    const targetLeft = sliceW * activeIndex + sliceW / 2 - FIXED_PILL_WIDTH / 2;
 
     if (!didInitialSnap.current) {
       pillLeft.setValue(targetLeft);
@@ -109,7 +106,7 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
       friction: 8,
       useNativeDriver: false,
     }).start();
-  }, [activeIndex, pillLeft, pillTargetFor, tabCount]);
+  }, [activeIndex, pillLeft, tabCount]);
 
   return (
     <View style={[tabStyles.container, { paddingBottom: insets.bottom }]}>
@@ -276,6 +273,12 @@ function TabsNavigator() {
 // ── App ───────────────────────────────────────────────────────────────────
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>

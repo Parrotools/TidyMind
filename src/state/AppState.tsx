@@ -18,7 +18,7 @@ type AppStateContextValue = {
   upsertNote: (payload: UpsertNoteInput) => void;
   deleteNote: (noteId: string) => void;
   toggleFavorite: (noteId: string) => void;
-  addChatMessage: (role: ChatMessage['role'], content: string) => ChatMessage;
+  addChatMessage: (role: ChatMessage['role'], content: string, imageBase64?: string) => ChatMessage;
   updateChatMessage: (id: string, content: string) => void;
   clearChat: () => void;
 };
@@ -119,12 +119,17 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const addChatMessage = (role: ChatMessage['role'], content: string): ChatMessage => {
+  const addChatMessage = (
+    role: ChatMessage['role'],
+    content: string,
+    imageBase64?: string,
+  ): ChatMessage => {
     const now = new Date().toISOString();
     const msg: ChatMessage = {
       id: createId(),
       role,
       content,
+      ...(imageBase64 ? { imageBase64 } : {}),
       createdAt: now,
     };
     setChatMessages(current => [...current, msg]);

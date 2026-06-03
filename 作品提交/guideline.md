@@ -639,6 +639,693 @@ async function analyzeImage(imageUrl: string, prompt: string): Promise<string> {
 }
 ```
 
+### 4.6 场景六：拍照 OCR → 结构化笔记（端到端）
+
+**涉及文件**：新增 `src/screens/CameraScreen.tsx`，改造 `src/services/ocr.ts`
+
+**功能**：用户拍摄一张照片 → OCR 识别文字 → 大模型结构化提取 → 自动创建笔记。
+
+#### 4.6.1 整体流程
+
+```
+┌──────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────┐
+│ 用户拍照  │ →  │ OCR 文字识别  │ →  │ LLM 结构化    │ →  │ 创建笔记  │
+│ (Camera) │    │ (Vivo OCR /  │    │ 提取为 Note   │    │ 保存本地  │
+│          │    │  LLM 多模态) │    │ 格式          │    │          │
+└──────────┘    └──────────────┘    └──────────────┘    └──────────┘
+```
+
+#### 4.6.2 方案选型
+
+Vivo AIGC 平台提供两种识别路径，推荐组合使用：
+
+| 方案 | API | 优势 | 劣势 |
+|------|-----|------|------|
+| **A: 通用 OCR** | `/ocr/general_recognition` | 识别精度高、速度快、结构化输出（含坐标） | 仅返回原始文字，不包含语义理解 |
+| **B: LLM 多模态** | `/v1/chat/completions` + 图片 | 可直接理解内容并一步转为笔记格式 | 耗时较长，对纯文字 OCR 不如专用 OCR 精准 |
+
+**推荐组合**：方案 A（OCR 提取原始文字）→ 方案 B（LLM 将原始文字结构化为笔记）。
+
+#### 4.6.3 React Native 拍照集成
+
+```bash
+# 安装相机和图库选择依赖
+npm install react-native-image-picker
+# iOS 额外配置
+cd ios && pod install && cd ..
+```
+
+```typescript
+// src/services/camera.ts
+
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import { Platform, PermissionsAndroid, Alert } from 'react-native';
+
+/**
+ * 请求相机权限并拍照，返回 Base64 编码的图片
+ */
+export async function capturePhoto(): Promise<string | null> {
+  // Android 权限请求
+  if (Platform.OS === 'android') {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.CAMERA,
+      {
+        title: '相机权限',
+        message: 'TidyMind 需要使用相机拍摄照片以识别文字',
+        buttonPositive: '允许',
+        buttonNegative: '拒绝',
+      },
+    );
+    if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+      Alert.alert('需要相机权限', '请在设置中开启相机权限后重试。');
+      return null;
+    }
+  }
+
+  const result = await launchCamera({
+    mediaType: 'photo',
+    includeBase64: true,
+    maxWidth: 2048,
+    maxHeight: 2048,
+    quality: 0.9,
+    saveToPhotos: false,
+  });
+
+  if (result.didCancel) return null;
+  if (result.errorCode) {
+    Alert.alert('拍照失败', result.errorMessage ?? '未知错误');
+    return null;
+  }
+
+  const asset = result.assets?.[0];
+  if (!asset?.base64) {
+    Alert.alert('图片数据为空', '请重试');
+    return null;
+  }
+
+  return `data:${asset.type ?? 'image/jpeg'};base64,${asset.base64}`;
+}
+
+/**
+ * 从相册选择图片
+ */
+export async function pickFromGallery(): Promise<string | null> {
+  const result = await launchImageLibrary({
+    mediaType: 'photo',
+    includeBase64: true,
+    maxWidth: 2048,
+    maxHeight: 2048,
+    quality: 0.9,
+  });
+
+  if (result.didCancel) return null;
+  const asset = result.assets?.[0];
+  if (!asset?.base64) return null;
+
+  return `data:${asset.type ?? 'image/jpeg'};base64,${asset.base64}`;
+}
+```
+
+#### 4.6.4 Vivo 通用 OCR API 调用
+
+```typescript
+// src/services/ocr.ts
+
+import { generateUUID } from './llm.config';
+
+/**
+ * 调用 Vivo 通用 OCR API 识别图片中的文字
+ *
+ * API: POST /ocr/general_recognition
+ * 文档: api.md → 文档中心/接口文档/通用OCR
+ */
+export type OCRResult = {
+  /** 完整识别文本 */
+  fullText: string;
+  /** 逐行识别结果 */
+  lines: Array<{
+    text: string;
+    /** 置信度 0~1 */
+    confidence: number;
+  }>;
+};
+
+export async function recognizeText(base64Image: string): Promise<OCRResult> {
+  const AppKey = process.env.VIVO_APP_KEY ?? '';
+  const requestId = generateUUID();
+  const DOMAIN = 'api-ai.vivo.com.cn';
+  const URI = '/ocr/general_recognition';
+
+  // 去掉 data:image/...;base64, 前缀，提取纯 Base64
+  const pureBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '');
+
+  const formData = new URLSearchParams();
+  formData.append('image', pureBase64);
+  formData.append('pos', '2');
+  formData.append('businessid', `aigc_${requestId}`);
+
+  const response = await fetch(`https://${DOMAIN}${URI}?requestId=${requestId}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${AppKey}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: formData.toString(),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OCR API Error ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json();
+  // Vivo OCR 返回格式（示例）：
+  // { code: 0, data: { text: "识别结果全文", items: [{ text: "行1", confidence: 0.98 }, ...] } }
+  const items = data?.data?.items ?? [];
+  const fullText = data?.data?.text ?? items.map((it: any) => it.text).join('\n');
+
+  return {
+    fullText,
+    lines: items.map((it: any) => ({
+      text: it.text ?? '',
+      confidence: it.confidence ?? 0,
+    })),
+  };
+}
+```
+
+#### 4.6.5 结构化提取为笔记格式
+
+OCR 返回原始文字后，调用大模型将其转化为 TidyMind 笔记结构：
+
+```typescript
+// src/services/ocr.ts（续）
+
+import { callLLM } from './llm';
+import { DEFAULT_MODEL } from './llm.config';
+import { Note } from '../types/note';
+
+/** 将 OCR 原始文本结构化为笔记 */
+export const OCR_TO_NOTE_PROMPT = `你是一个知识管理助手。用户提供了一段从图片中 OCR 识别出的文本。
+
+请将其整理为结构化的笔记。返回 JSON（不要包含其他文字）：
+{
+  "title": "笔记标题（≤20字，从内容中提炼）",
+  "content": "整理后的笔记正文（保留关键信息，去除 OCR 噪音，合理分段）",
+  "tags": ["标签1", "标签2", "标签3"]
+}
+
+## 整理规则
+- 标题要能概括图片内容的核心主题
+- 去除无意义的 OCR 噪音（如页码、水印、杂乱字符）
+- 保留原文中的数字、日期、人名、术语等关键信息
+- 用 Markdown 格式组织内容（标题、列表、加粗等）
+- 标签简短（2-4字），体现内容分类`;
+
+export async function structureOCRToNote(ocrText: string): Promise<{
+  title: string;
+  content: string;
+  tags: string[];
+}> {
+  const response = await callLLM({
+    model: DEFAULT_MODEL,  // Doubao-Seed-2.0-mini，快速响应
+    messages: [
+      { role: 'system', content: OCR_TO_NOTE_PROMPT },
+      { role: 'user', content: ocrText },
+    ],
+    stream: false,
+    temperature: 0.3,
+    maxTokens: 2048,
+  });
+
+  try {
+    const parsed = JSON.parse(response);
+    return {
+      title: parsed.title ?? '未命名笔记',
+      content: parsed.content ?? ocrText,
+      tags: parsed.tags ?? [],
+    };
+  } catch {
+    // JSON 解析失败 → 降级：将原始 OCR 文本作为正文
+    return {
+      title: 'OCR 识别笔记',
+      content: ocrText,
+      tags: ['OCR'],
+    };
+  }
+}
+```
+
+#### 4.6.6 完整拍照 → 创建笔记流程
+
+```typescript
+// src/hooks/usePhotoToNote.ts
+
+import { useState, useCallback } from 'react';
+import { Alert } from 'react-native';
+import { capturePhoto, pickFromGallery } from '../services/camera';
+import { recognizeText, structureOCRToNote } from '../services/ocr';
+import { useAppState } from '../state/AppState';
+
+export function usePhotoToNote(onSuccess?: () => void) {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [statusText, setStatusText] = useState('');
+  const { upsertNote } = useAppState();
+
+  /**
+   * 拍照 → OCR → 结构化 → 创建笔记
+   *
+   * @returns 创建的笔记 ID，失败则返回 null
+   */
+  const processPhoto = useCallback(async (): Promise<string | null> => {
+    try {
+      // 步骤 1：拍照
+      setStatusText('正在启动相机...');
+      setIsProcessing(true);
+
+      const imageBase64 = await capturePhoto();
+      if (!imageBase64) {
+        setIsProcessing(false);
+        return null; // 用户取消
+      }
+
+      // 步骤 2：OCR 识别
+      setStatusText('正在识别文字...');
+      const ocrResult = await recognizeText(imageBase64);
+
+      if (!ocrResult.fullText.trim()) {
+        Alert.alert('未识别到文字', '图片中未检测到可识别的文字内容，请重试。');
+        setIsProcessing(false);
+        return null;
+      }
+
+      // 步骤 3：LLM 结构化
+      setStatusText('正在整理笔记格式...');
+      const structured = await structureOCRToNote(ocrResult.fullText);
+
+      // 步骤 4：创建笔记
+      setStatusText('正在保存笔记...');
+      const noteId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      upsertNote({
+        id: noteId,
+        title: structured.title,
+        content: structured.content,
+        tags: structured.tags,
+      });
+
+      setIsProcessing(false);
+      setStatusText('');
+      onSuccess?.();
+      return noteId;
+    } catch (err: any) {
+      setIsProcessing(false);
+      setStatusText('');
+      Alert.alert('处理失败', err.message ?? '拍照识别过程中出现错误，请重试。');
+      return null;
+    }
+  }, [upsertNote, onSuccess]);
+
+  /**
+   * 从相册选择 → OCR → 结构化 → 创建笔记
+   */
+  const processGallery = useCallback(async (): Promise<string | null> => {
+    try {
+      setStatusText('正在打开相册...');
+      setIsProcessing(true);
+
+      const imageBase64 = await pickFromGallery();
+      if (!imageBase64) {
+        setIsProcessing(false);
+        return null;
+      }
+
+      setStatusText('正在识别文字...');
+      const ocrResult = await recognizeText(imageBase64);
+
+      if (!ocrResult.fullText.trim()) {
+        Alert.alert('未识别到文字', '图片中未检测到可识别的文字内容。');
+        setIsProcessing(false);
+        return null;
+      }
+
+      setStatusText('正在整理笔记格式...');
+      const structured = await structureOCRToNote(ocrResult.fullText);
+
+      setStatusText('正在保存笔记...');
+      upsertNote({
+        title: structured.title,
+        content: structured.content,
+        tags: structured.tags,
+      });
+
+      setIsProcessing(false);
+      setStatusText('');
+      onSuccess?.();
+      return null;
+    } catch (err: any) {
+      setIsProcessing(false);
+      setStatusText('');
+      Alert.alert('处理失败', err.message ?? '图片识别过程中出现错误，请重试。');
+      return null;
+    }
+  }, [upsertNote, onSuccess]);
+
+  return { processPhoto, processGallery, isProcessing, statusText };
+}
+```
+
+#### 4.6.7 UI 集成 — 拍照按钮与进度指示
+
+在 **FilesScreen** 或 **HomeScreen** 中添加快捷拍照入口：
+
+```typescript
+// FilesScreen.tsx 或 HomeScreen.tsx 新增
+
+import { usePhotoToNote } from '../hooks/usePhotoToNote';
+import { useRef } from 'react';
+import { ActionSheetIOS, Platform, View, Text, ActivityIndicator } from 'react-native';
+
+function PhotoNoteButton() {
+  const { processPhoto, processGallery, isProcessing, statusText } =
+    usePhotoToNote(() => {
+      Alert.alert('笔记已创建', '拍照识别的内容已保存为笔记。');
+    });
+
+  // 弹出选择：拍照 / 相册
+  const handlePress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['取消', '拍照', '从相册选择'],
+          cancelButtonIndex: 0,
+        },
+        index => {
+          if (index === 1) processPhoto();
+          else if (index === 2) processGallery();
+        },
+      );
+    } else {
+      Alert.alert('添加笔记', '', [
+        { text: '取消', style: 'cancel' },
+        { text: '拍照', onPress: processPhoto },
+        { text: '从相册选择', onPress: processGallery },
+      ]);
+    }
+  };
+
+  return (
+    <View>
+      {isProcessing ? (
+        <View style={styles.processingContainer}>
+          <ActivityIndicator size="small" color="#ffffff" />
+          <Text style={styles.statusText}>{statusText}</Text>
+        </View>
+      ) : (
+        <Pressable style={styles.cameraButton} onPress={handlePress}>
+          <Text style={styles.cameraIcon}>📷</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+```
+
+#### 4.6.8 流程状态机
+
+```
+初始状态 (📷 图标)
+    │
+    ▼ 用户点击
+┌─────────────┐
+│ 选择来源      │  ← ActionSheet: 拍照 / 相册 / 取消
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐   statusText: "正在启动相机..."
+│ 拍摄/选择     │   或 "正在打开相册..."
+└──────┬──────┘
+       │ 成功获取 Base64
+       ▼
+┌─────────────┐   statusText: "正在识别文字..."
+│ OCR 识别     │   Spinner 动画
+└──────┬──────┘
+       │ 提取到文字
+       ▼
+┌─────────────┐   statusText: "正在整理笔记格式..."
+│ LLM 结构化   │   Spinner 动画
+└──────┬──────┘
+       │ 返回 title + content + tags
+       ▼
+┌─────────────┐   statusText: "正在保存笔记..."
+│ 创建笔记     │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ 跳转笔记列表  │   Alert: "笔记已创建"
+└─────────────┘
+```
+
+#### 4.6.9 新增文件清单
+
+| 文件 | 职责 |
+|------|------|
+| `src/services/camera.ts` | 相机权限、拍照、相册选择封装 |
+| `src/services/ocr.ts` | Vivo OCR API 调用 + LLM 结构化 |
+| `src/hooks/usePhotoToNote.ts` | 完整拍照→笔记流程 Hook |
+| `src/screens/CameraScreen.tsx` | (可选) 拍照预览界面 |
+
+#### 4.6.10 安装新依赖
+
+```bash
+npm install react-native-image-picker
+# iOS
+cd ios && pod install && cd ..
+```
+
+> **注意**：`react-native-image-picker` 已加入 `package.json`，clone 后 `npm install` 自动安装。
+
+---
+
+### 4.7 场景七：笔记导出为 Markdown
+
+**涉及文件**：`src/screens/ExportScreen.tsx`（改造）、新增 `src/services/exportMarkdown.ts`
+
+**功能**：将选中的笔记导出为标准 Markdown 格式，支持预览、复制到剪贴板、分享到其他应用。
+
+#### 4.7.1 Markdown 导出格式
+
+每条笔记导出为以下格式：
+
+```markdown
+# 笔记标题
+
+> 标签: tag1, tag2 | 更新于 2026-06-03
+
+---
+
+笔记正文内容...
+
+支持多段落、Markdown 语法。
+```
+
+多篇笔记导出时用分隔线 `---` 隔开。
+
+#### 4.7.2 核心实现
+
+```typescript
+// src/services/exportMarkdown.ts
+
+import { Note } from '../types/note';
+
+/**
+ * 将单条笔记转换为 Markdown 字符串
+ */
+export function noteToMarkdown(note: Note): string {
+  const tagLine = note.tags.length > 0
+    ? `标签: ${note.tags.join(', ')} | `
+    : '';
+
+  const date = new Date(note.updatedAt);
+  const dateStr = Number.isNaN(date.getTime())
+    ? '未知'
+    : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+  // 生成 YAML front matter（可选，便于 Obsidian/Notion 等工具导入）
+  const frontMatter = [
+    '---',
+    `title: "${note.title}"`,
+    `tags: [${note.tags.join(', ')}]`,
+    `created: ${note.createdAt}`,
+    `updated: ${note.updatedAt}`,
+    note.isFavorite ? 'favorite: true' : '',
+    '---',
+  ].filter(Boolean).join('\n');
+
+  return [
+    frontMatter,
+    '',
+    `# ${note.title}`,
+    '',
+    `> ${tagLine}更新于 ${dateStr}`,
+    '',
+    '---',
+    '',
+    note.content,
+    '',
+  ].join('\n');
+}
+
+/**
+ * 将多篇笔记合并为一个 Markdown 文档
+ */
+export function notesToMarkdown(notes: Note[]): string {
+  if (notes.length === 0) return '';
+
+  if (notes.length === 1) {
+    return noteToMarkdown(notes[0]);
+  }
+
+  // 多篇笔记：添加文档总标题和目录
+  const header = [
+    '# TidyMind 笔记导出',
+    '',
+    `> 导出时间: ${new Date().toLocaleString('zh-CN')}`,
+    `> 笔记数量: ${notes.length}`,
+    '',
+    '---',
+    '',
+    '## 目录',
+    '',
+    ...notes.map((n, i) => `${i + 1}. [${n.title}](#${slugify(n.title)})`),
+    '',
+    '---',
+    '',
+  ].join('\n');
+
+  const body = notes
+    .map((note, i) => [
+      i > 0 ? '---' : '',
+      noteToMarkdown(note).replace(/^---\n.*?\n---/s, ''), // 去掉单篇的 front matter（已在头部）
+    ].filter(Boolean).join('\n\n'))
+    .join('\n\n');
+
+  return header + body;
+}
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w一-鿿]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * 导出 Markdown 文本到系统剪贴板
+ */
+export async function copyToClipboard(markdown: string): Promise<boolean> {
+  const { Clipboard } = require('react-native');
+  Clipboard.setString(markdown);
+  return true;
+}
+
+/**
+ * 通过系统分享菜单分享 Markdown 文件
+ */
+export async function shareMarkdownFile(
+  markdown: string,
+  fileName = 'tidymind-export.md',
+): Promise<void> {
+  const { Share } = require('react-native');
+  const RNFS = require('react-native-fs');
+
+  // 写入临时文件
+  const tempPath = `${RNFS.CachesDirectoryPath}/${fileName}`;
+  await RNFS.writeFile(tempPath, markdown, 'utf8');
+
+  // 打开系统分享
+  await Share.share({
+    title: '导出 TidyMind 笔记',
+    message: markdown,
+    url: `file://${tempPath}`,
+  });
+}
+```
+
+#### 4.7.3 改造 ExportScreen
+
+```typescript
+// ExportScreen.tsx 关键改动
+
+import { noteToMarkdown, notesToMarkdown, copyToClipboard } from '../services/exportMarkdown';
+
+export default function ExportScreen() {
+  const { notes } = useAppState();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const selectedNotes = notes.filter(n => selectedIds.includes(n.id));
+  const preview = notesToMarkdown(selectedNotes);
+
+  const handleExport = async () => {
+    if (!selectedIds.length) {
+      Alert.alert('未选择笔记', '请至少选择一篇笔记进行导出。');
+      return;
+    }
+
+    try {
+      await copyToClipboard(preview);
+      Alert.alert('导出成功', `已复制 ${selectedIds.length} 篇笔记的 Markdown 到剪贴板。`);
+    } catch {
+      Alert.alert('导出失败', '复制到剪贴板时出错。');
+    }
+  };
+
+  const handleShare = async () => {
+    if (!selectedIds.length) {
+      Alert.alert('未选择笔记', '请至少选择一篇笔记进行导出。');
+      return;
+    }
+    await shareMarkdownFile(preview);
+  };
+
+  // ... JSX 新增：
+  // 1. 预览区域（ScrollView 显示 Markdown 文本）
+  // 2. 双按钮：复制到剪贴板 / 分享
+}
+```
+
+#### 4.7.4 Markdown 内容增强（可选）
+
+```typescript
+/**
+ * 增强 Markdown 输出：利用大模型优化笔记格式
+ */
+export async function enhanceMarkdownWithAI(note: Note): Promise<string> {
+  const response = await callLLM({
+    model: DEFAULT_MODEL,
+    messages: [
+      {
+        role: 'system',
+        content: `你是一个 Markdown 排版专家。请将用户提供的笔记优化为格式精美的 Markdown。
+
+## 优化规则
+- 保留所有原始信息
+- 添加合适的 Markdown 排版（标题层级、列表、加粗、引用等）
+- 修正明显的中文错别字
+- 返回纯 Markdown，不要加任何解释`,
+      },
+      {
+        role: 'user',
+        content: `标题: ${note.title}\n标签: ${note.tags.join(', ')}\n\n${note.content}`,
+      },
+    ],
+    stream: false,
+    temperature: 0.2,
+  });
+  return response;
+}
+```
+
 ---
 
 ## 5. 流式响应与用户体验
@@ -700,6 +1387,107 @@ onToken: (content, reasoning) => {
   }
 },
 ```
+
+---
+
+### 4.8 场景八：AI 助手图片识别与生成
+
+**涉及文件**：`src/screens/AssistantScreen.tsx`（改造）、`src/services/llm.ts`、`src/hooks/useChat.ts`
+
+**功能**：
+- **图片识别**：用户上传图片 → AI 多模态分析图片内容 → 返回文字描述/关键信息
+- **图片生成**：用户输入文字描述 → LLM 优化为绘图 Prompt → 调用 Vivo 图片生成 API → 返回生成的图片
+
+#### 4.8.1 图片识别流程
+
+```
+用户点击 📷 → ActionSheet(拍照/相册)
+    │
+    ▼
+┌──────────────────┐
+│ 图片 Base64       │  ← camera.ts
+└──────┬───────────┘
+       ▼
+┌──────────────────┐
+│ 用户输入区显示    │  缩略图预览 (120×90) + ✕ 删除按钮
+│ 图片附件          │
+└──────┬───────────┘
+       ▼ 用户点发送
+┌──────────────────┐
+│ callLLMWithImage  │  → Volc-DeepSeek-V3.2 多模态模型
+│ llm.ts            │  → IMAGE_ANALYSIS_PROMPT
+└──────┬───────────┘
+       ▼
+    AI 回复分析结果（图片类型 + 主要内容 + 关键信息）
+```
+
+#### 4.8.2 图片生成流程
+
+```
+用户输入: "帮我画一张图：夕阳下的海滩"
+    │
+    ▼
+┌──────────────────┐
+│ generateImage()   │  useChat.ts
+└──────┬───────────┘
+       ▼
+┌──────────────────┐
+│ 步骤1: LLM 优化   │  → IMAGE_GENERATION_PROMPT
+│ 生成绘图 Prompt   │  返回: "一幅写实风格的夕阳海滩，金色晚霞映照海面..."
+└──────┬───────────┘
+       ▼
+┌──────────────────┐
+│ 步骤2: 图片生成   │  → POST /v1/images/generations
+│ Vivo 图片生成 API │  返回: Base64 图片
+└──────┬───────────┘
+       ▼
+    AI 回复: "图片已生成\n\n绘图提示词: ..."
+```
+
+#### 4.8.3 关键代码
+
+```typescript
+// src/services/llm.ts — 多模态图片分析
+export async function callLLMWithImage(
+  userText: string,
+  imageB64: string,
+  systemPrompt: string,
+): Promise<string> {
+  const userContent: any[] = [
+    { type: 'text', text: userText || '请分析这张图片' },
+    { type: 'image_url', image_url: { url: imageB64 } },
+  ];
+
+  const completion = await client.chat.completions.create({
+    model: 'Volc-DeepSeek-V3.2',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+    stream: false,
+    temperature: 0.5,
+    max_tokens: 2048,
+  });
+  // ...
+}
+```
+
+#### 4.8.4 快速入口
+
+在 AI 助手空状态时，快捷提示区增加了两个带图标的按钮：
+
+| 按钮 | 行为 |
+|------|------|
+| 📷 **识别图片** | 弹出拍照/相册选择器 → 选图后直接发送多模态分析请求 |
+| 🎨 **生成图片** | 在输入框填入 "请帮我生成一张图片：" → 用户补充描述后发送 |
+
+#### 4.8.5 UI 设计一致性
+
+- 图片按钮背景 `Colors.inactive` (#b2b2b2) → 与 Tab 非活跃态同色
+- 图片快捷入口 `Colors.active` (#262626) 深色胶囊 → 与活跃 Tab 同色
+- 图片预览 `BorderRadius.md` (8px) → 与卡片圆角一致
+- 删除按钮 `Colors.textPrimary` (#262626) 圆形 → 与整体暗色系一致
+- 输入区附件提示文字 `Colors.textTertiary` (#b2b2b2) → 与占位符同色
 
 ---
 
