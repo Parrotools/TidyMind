@@ -33,6 +33,10 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { AppStateProvider } from './src/state/AppState';
 import { BorderRadius, Colors, Spacing } from './src/theme/designTokens';
+import { setLLMAppKey } from './src/services/llm.config';
+
+// ── 配置 AppKey ────────────────────────────────────────────────────────────
+setLLMAppKey('sk-xuanji-2026482448-cGFpZlhZc3dIVEVIekdHTw==');
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();

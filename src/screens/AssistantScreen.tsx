@@ -1,7 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -12,41 +12,55 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppState } from '../state/AppState';
+import { useChat } from '../hooks/useChat';
 import { BorderRadius, Colors, Spacing } from '../theme/designTokens';
 import { ChatMessage } from '../types/chat';
 import { RootStackParamList } from '../navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const QUICK_PROMPTS = [
-  '总结最近的笔记',
-  '创建学习计划',
-  '提取关键行动',
-];
-
-function buildAssistantReply(message: string) {
-  return `基于"${message}"的快速回复：\n\n- 我可以帮你总结笔记\n- 建议下一步行动\n- 草拟复习大纲`;
-}
+const QUICK_PROMPTS = ['总结最近的笔记', '创建学习计划', '提取关键行动'];
 
 export default function AssistantScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { chatMessages, addChatMessage, clearChat } = useAppState();
+  const { chatMessages, addChatMessage, updateChatMessage, clearChat } =
+    useAppState();
+  const { isStreaming, sendMessage, cancel } = useChat();
   const [input, setInput] = useState('');
   const flatListRef = useRef<FlatList>(null);
 
-  const conversation = useMemo(() => chatMessages, [chatMessages]);
-
-  const handleSend = (text: string) => {
+  const handleSend = async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed) {
-      return;
-    }
-    addChatMessage('user', trimmed);
-    addChatMessage('assistant', buildAssistantReply(trimmed));
+    if (!trimmed || isStreaming) return;
+
     setInput('');
+
+    // 1. 添加用户消息到全局状态
+    addChatMessage('user', trimmed);
+
+    // 2. 创建 AI 占位消息
+    const aiMsg = addChatMessage('assistant', '思考中...');
+
+    // 3. 构建发送给 LLM 的历史（不含 AI 占位消息）
+    //    读取最新的全局状态快照（用 getter 闭包不太好，用 ref）
+    //    这里用 addChatMessage 返回的 msg + 现有的 chatMessages
+    const history: ChatMessage[] = [
+      ...chatMessages,
+      { id: 'u', role: 'user' as const, content: trimmed, createdAt: '' },
+    ];
+
+    // 4. 调用 LLM
+    await sendMessage(trimmed, history, async (fullText, isDone) => {
+      updateChatMessage(aiMsg.id, fullText);
+    });
+
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
+  };
+
+  const handleClear = () => {
+    clearChat();
   };
 
   const renderMessage = ({ item }: { item: ChatMessage }) => {
@@ -82,36 +96,40 @@ export default function AssistantScreen() {
             <Text style={styles.backIcon}>‹</Text>
           </Pressable>
           <Text style={styles.title}>AI 助手</Text>
-          <Pressable style={styles.clearButton} onPress={clearChat}>
+          <Pressable style={styles.clearButton} onPress={handleClear}>
             <Text style={styles.clearText}>清空</Text>
           </Pressable>
         </View>
 
-        {/* AI Avatar section */}
-        <View style={styles.aiSection}>
-          <View style={styles.aiAvatar}>
-            <Text style={styles.aiAvatarText}>AI</Text>
+        {/* AI Avatar (only when empty) */}
+        {chatMessages.length === 0 && (
+          <View style={styles.aiSection}>
+            <View style={styles.aiAvatar}>
+              <Text style={styles.aiAvatarText}>AI</Text>
+            </View>
+            <Text style={styles.aiGreeting}>您好！我是你的AI助手</Text>
           </View>
-          <Text style={styles.aiGreeting}>您好！我是你的AI助手</Text>
-        </View>
+        )}
 
-        {/* Quick prompts */}
-        <View style={styles.promptRow}>
-          {QUICK_PROMPTS.map(prompt => (
-            <Pressable
-              key={prompt}
-              style={styles.promptChip}
-              onPress={() => handleSend(prompt)}
-            >
-              <Text style={styles.promptText}>{prompt}</Text>
-            </Pressable>
-          ))}
-        </View>
+        {/* Quick prompts (only when empty) */}
+        {chatMessages.length === 0 && (
+          <View style={styles.promptRow}>
+            {QUICK_PROMPTS.map(prompt => (
+              <Pressable
+                key={prompt}
+                style={styles.promptChip}
+                onPress={() => handleSend(prompt)}
+              >
+                <Text style={styles.promptText}>{prompt}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         {/* Chat messages */}
         <FlatList
           ref={flatListRef}
-          data={conversation}
+          data={chatMessages}
           keyExtractor={item => item.id}
           renderItem={renderMessage}
           contentContainerStyle={styles.listContent}
@@ -126,7 +144,7 @@ export default function AssistantScreen() {
           }
         />
 
-        {/* Input bar (Figma-style) */}
+        {/* Input bar */}
         <View style={styles.inputBar}>
           <TextInput
             style={styles.input}
@@ -135,30 +153,43 @@ export default function AssistantScreen() {
             value={input}
             onChangeText={setInput}
             multiline
+            editable={!isStreaming}
           />
           <View style={styles.inputActions}>
-            <Pressable
-              style={styles.iconButton}
-              onPress={() => handleSend(input)}
-            >
-              <Text style={styles.iconButtonText}>↑</Text>
-            </Pressable>
+            {isStreaming ? (
+              <Pressable style={styles.stopButton} onPress={cancel}>
+                <Text style={styles.stopButtonText}>■</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={[
+                  styles.sendButton,
+                  !input.trim() && styles.sendButtonDisabled,
+                ]}
+                onPress={() => handleSend(input)}
+                disabled={!input.trim()}
+              >
+                <Text style={styles.sendButtonText}>↑</Text>
+              </Pressable>
+            )}
           </View>
         </View>
+
+        {/* Streaming indicator */}
+        {isStreaming && (
+          <View style={styles.streamingBar}>
+            <ActivityIndicator size="small" color={Colors.active} />
+            <Text style={styles.streamingText}>AI 正在回复...</Text>
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.backgroundStart,
-  },
-  container: {
-    flex: 1,
-    paddingHorizontal: Spacing.lg,
-  },
+  safeArea: { flex: 1, backgroundColor: Colors.backgroundStart },
+  container: { flex: 1, paddingHorizontal: Spacing.lg },
   headerRow: {
     marginTop: Spacing.md,
     marginBottom: Spacing.lg,
@@ -174,31 +205,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backIcon: {
-    fontSize: 20,
-    color: Colors.textPrimary,
-    lineHeight: 22,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
+  backIcon: { fontSize: 20, color: Colors.textPrimary, lineHeight: 22 },
+  title: { fontSize: 20, fontWeight: '600', color: Colors.textPrimary },
   clearButton: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.surface,
   },
-  clearText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: Colors.textSecondary,
-  },
-  aiSection: {
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
+  clearText: { fontSize: 12, fontWeight: '500', color: Colors.textSecondary },
+  aiSection: { alignItems: 'center', marginBottom: Spacing.xl },
   aiAvatar: {
     width: 96,
     height: 96,
@@ -208,16 +224,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Spacing.lg,
   },
-  aiAvatarText: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: Colors.textOnDark,
-  },
-  aiGreeting: {
-    fontSize: 20,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-  },
+  aiAvatarText: { fontSize: 24, fontWeight: '600', color: Colors.textOnDark },
+  aiGreeting: { fontSize: 20, fontWeight: '500', color: Colors.textPrimary },
   promptRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -232,42 +240,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  promptText: {
-    fontSize: 12,
-    color: Colors.textPrimary,
-  },
-  listContent: {
-    paddingBottom: Spacing.lg,
-    gap: Spacing.sm,
-  },
+  promptText: { fontSize: 12, color: Colors.textPrimary },
+  listContent: { paddingBottom: Spacing.lg, gap: Spacing.sm },
   bubble: {
     maxWidth: '80%',
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
   },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: Colors.active,
-  },
+  userBubble: { alignSelf: 'flex-end', backgroundColor: Colors.active },
   assistantBubble: {
     alignSelf: 'flex-start',
     backgroundColor: Colors.surface,
   },
-  bubbleText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  userText: {
-    color: Colors.textOnDark,
-  },
-  assistantText: {
-    color: Colors.textPrimary,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
+  bubbleText: { fontSize: 14, lineHeight: 20 },
+  userText: { color: Colors.textOnDark },
+  assistantText: { color: Colors.textPrimary },
+  emptyState: { alignItems: 'center', paddingVertical: 32 },
   emptyTitle: {
     fontSize: 16,
     fontWeight: '600',
@@ -286,7 +275,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.xs,
     minHeight: 64,
   },
   input: {
@@ -300,7 +289,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginLeft: Spacing.sm,
   },
-  iconButton: {
+  sendButton: {
     width: 32,
     height: 32,
     borderRadius: BorderRadius.full,
@@ -308,9 +297,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconButtonText: {
+  sendButtonDisabled: { backgroundColor: Colors.inactive },
+  sendButtonText: {
     color: Colors.textOnDark,
     fontSize: 16,
     fontWeight: '600',
   },
+  stopButton: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.textPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopButtonText: { color: Colors.textOnDark, fontSize: 12 },
+  streamingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingBottom: Spacing.lg,
+  },
+  streamingText: { fontSize: 12, color: Colors.textSecondary },
 });
