@@ -1660,3 +1660,744 @@ print('headers', headers)
 
 if __name__ == '__main__':
 query_rewrite()
+
+实时短语音识别
+
+更新时间：2026-03-13 10:48:12
+
+服务简介
+本文主要描述基于websocket协议之上的实时ASR交互接口协议， 基于该接口协议，客户端可以选择合适的语言进行客户端的开发，短语音指单轮识别时长在60s之内。
+
+接口说明
+实时ASR服务是基于WebSocket协议实现数据的传输。 主要是包含两个阶段：握手阶段和实时通信阶段 。
+
+注意
+说明：支持的音频格式为16k/16b 单声道的PCM编码格式音频
+
+API
+WebSocket 握手阶段主要是用于客户端和服务端建立WebSocket通信通道
+
+请求地址
+域名：api-ai.vivo.com.cn
+
+握手参数
+Headers
+
+参数	类型	是否必须	值
+Authorization	string	是	Bearer AppKey
+URL参数通过key1=val1&key2=val2…&keyn=valn 方式拼接 ， 并附加在url后面 ， 例如 ：
+
+ws://api-ai.vivo.com.cn/asr/v2?key1=val1&key2=val2..&keyn=valn
+字段	类型	说明	是否必选	是否要urlencode	备注
+model	string	手机型号	否	是
+system_version	string	手机系统版本号	否	是
+client_version	string	应用版本号	是	是	可写默认值"unknown"
+package	string	应用包名	是	是	可写默认值"unknown"
+sdk_version	string	sdk版本号	是	是	可写默认值"unknown"
+user_id	string	用户id(32位字符串，包括数字和小写字母)	是	是	唯一标志符
+android_version	string	android版本号	是	是	可写默认值"unknown"
+system_time	string	系统时间	是	是	Unix timestamp, 单位:毫秒
+net_type	string	网络状态	是	是	0数据网络，1 wifi环境
+engineid	string	能力id，如shortasrinput	是	是	短语音根据所需的模型类别选择能力id，一般选通用模型：shortasrinput
+requestId	uuid	追踪链路	是		
+发送语音请求
+语音请求text参数
+1） websocket连接建立成功之后，调用端首先向服务端发送一个opcode为text的报文
+2） 这个报文的payload是一个json字符串
+
+参数名	类型	说明	是否必选	备注
+type	string	text包的类型	是	started
+request_id	string	uuid，标识一次请求，32字符	是
+asr_info.end_vad_time	int	后端检测时间	是	单位：毫秒
+asr_info.audio_type	string	音频类型	是	pcm/opus
+asr_info.chinese2digital	int	是否打开汉字转数字	是	0关闭，1打开
+asr_info.punctuation	int	是否打开标点符号	是	0：无标点 1：带标点
+business_info	string	扩展字段，可用于透传信息	否
+语音请求binary数据
+1） 调用端发送完opcode为text的报文之后，接着发送语音数据，opcode为binary, payload是语音数据
+2） 语音数据建议分帧发送，每帧包含的语音时长是40毫秒，单句不超过60s
+3） 语音数据发送完毕之后，再发送一个opcode为binary，payload是’ --end –- ‘，表示语音数据发送完毕
+4） 需要关闭时，发送一个opcode为binary，payload是’ --close-- '，服务端收到后退出连接
+
+接收数据格式
+握手返回包
+成功:
+
+{
+"action":"started",
+"code":0,
+"data":"",
+"desc":"success",
+"sid":"5e094340-31be-47e7-83ad-7c6f27cd4f74"
+}
+失败:
+
+{
+"action":"error",
+"code":1001,
+"data":"",
+"desc":"time out",
+"sid":"5e094340-31be-47e7-83ad-7c6f27cd4f74"
+}
+识别结果返回包:
+
+{
+"sid":"e831d141-34e0-4617-a1b9-4ba43811453c@91",
+"is_finish":false,
+"data":{
+"result_id":91,
+"reformation":1,
+"is_last":true,
+"text":"气场中的场的部首共是多少笔。"
+},
+"action":"result",
+"request_id":"req_id",
+"code":0,
+"desc":"success",
+"type":"asr"
+}
+返回字段
+参数	类型	说明
+action	string	返回类型(started-握手成功, result-结果, error-出错)
+type	string	业务类型(asr-语音识别, nlu-语义理解，common-通用返回)
+code	int	返回码， 成功为0， 详细见2.4
+data	object	结果数据
+desc	string	描述
+sid	string	会话id
+data字段说明
+
+参数	类型	说明
+text	string	asr识别结果
+result_id	int	结果序列号
+reformation	int	asr识别返回， 1代表修正 0代表追加
+business_info	stirng	透传，由业务方和应用决定
+is_last	bool	是否为本次会话最后一条结果
+is_finish	bool	是否为本次连接最后一条结果
+识别错误码
+错误码	描述
+10000	参数校验失败
+10002	引擎服务异常
+10003	获取中间识别结果失败
+10004	获取最终识别结果失败
+10005	解析引擎数据异常
+10006	引擎内部错误
+10007	请求nlu出错
+10008	音频超长
+调用示例
+python调用demo：实时短语音识别demo
+
+使用说明见：demo使用说明
+
+地理编码(POI搜索)
+
+更新时间：2026-03-13 09:31:38
+
+服务简介
+输入关键字，查询对应城市的POI接口，输出相关联的地理名称、类别、经度纬度、附近的酒店饭店商铺等信息。
+
+接口说明
+访问地址：https://api-ai.vivo.com.cn/search/geo
+
+访问方式：GET
+
+请求参数
+Header
+
+参数	类型	是否必须	值
+Content-Type	string	是	application/json
+Authorization	String	是	Bearer AppKey
+查询参数
+
+参数	类型	是否必填	描述	示例值
+keywords	String	是	关键字	卓悦汇
+city	String	是	行政区划编码或城市名称	深圳市或440300
+page_num	int	否	当前页数	2 （小于1按1处理，大于20按20处理）
+page_size	int	否	每页条目数	10 （小于1按10处理，大于15按15处理）
+requestId	uuid	是	uuid值
+响应结果
+Header
+
+参数	类型	值
+Content-Type	string	application/json
+Body
+
+参数	类型	是否必填	最大长度	描述	示例值
+statusCode	int	是		状态码
+statusInfo	int	是		状态信息
+total	string	是		poi总数
+pois	array[poi(object)]	是		poi列表
+currentDistrict	object	是		当前行政区域
+poi的格式如下：
+
+参数	类型	是否必填	最大长度	描述	示例值
+name	string	是		名称	卓悦汇
+address	string	是		地址	中康路126
+province	string	是		省	广东省
+city	string	是		市	深圳市
+district	string	是		区	福田区
+nid	string	是		id	44010000880698
+phone	string	是		电话
+location	string	是		经纬度坐标（02坐标）,经度和纬度用","分隔	114.060325,22.570432
+distance	int	是		距离	0.0
+currentDistrict的格式如下：
+
+参数	类型	是否必填	描述	示例值
+name	string	是	名称	深圳市
+level	int	是	行政区域级别，0：国家、1：省、2：市、3：县	2
+centerPoint	string	是	行政区域中心点（市级行政区的中心点是城区的中心点），经度和纬度用","分隔，备注：中心点数据可以人工配置	114.05369,22.54267
+adcode	string	是	区域编码	440300
+响应示例
+
+{
+"isNearby": 0,
+"nearbyParam": null,
+"filter": null,
+"poiStyle": "normal",
+"topicName": null,
+"searchType": "normal",
+"totalCount": 52,
+"pois": [
+{
+"mid": "93377815",
+"province": "广东省",
+"district": "福田区",
+"tag": "",
+"brand": "",
+"alias": null,
+"confidenceLevel": "1",
+"direct": "",
+"hit": 119,
+"point": 1,
+"cityPoint": 1,
+"url": "",
+"photo": "",
+"border": null,
+"road": null,
+"score": 1.0,
+"parentId": "",
+"standbyTypeName": "",
+"standbyTypeCode": "",
+"standbyTag": "",
+"standbyBrand": "",
+"chaincode": "",
+"extds": null,
+"city": "深圳市",
+"nid": "44010000880698",
+"cpid": "",
+"src": "www.navinfo.com",
+"phone": "0755-82566588",
+"typeName": "百货商场零售",
+"typeCode": "130102,650100,650000",
+"location": "114.060325,22.570432",
+"side": "",
+"rank": "0",
+"adcode": "440304",
+"name": "卓悦汇",
+"address": "中康路126",
+"naviLocation": "114.060325,22.570562",
+"distance": 0.0
+},
+{
+"mid": "500047755",
+"province": "广东省",
+"district": "盐田区",
+"tag": "",
+"brand": "",
+"alias": null,
+"confidenceLevel": "1",
+"direct": "",
+"hit": 1,
+"point": 1,
+"cityPoint": 1,
+"url": "",
+"photo": "",
+"border": null,
+"road": null,
+"score": 1.0,
+"parentId": "",
+"standbyTypeName": "",
+"standbyTypeCode": "",
+"standbyTag": "",
+"standbyBrand": "",
+"chaincode": "",
+"extds": null,
+"city": "深圳市",
+"nid": "44010000233953",
+"cpid": "",
+"src": "www.navinfo.com",
+"phone": "18876146807",
+"typeName": "服装、箱包零售",
+"typeCode": "130301,650300,650000",
+"location": "114.232137,22.551464",
+"side": "",
+"rank": "0",
+"adcode": "440308",
+"name": "卓悦汇",
+"address": "官下路79",
+"naviLocation": "114.232247,22.551554",
+"distance": 0.0
+}
+],
+"currentDistrict": {
+"level": 2,
+"centerPoint": "114.05369,22.54267",
+"citycode": "020_10",
+"name": "深圳市",
+"adcode": "440300"
+},
+"total": 52,
+"statusCode": 4,
+"statusInfo": "cookie is null",
+"dataType": 30
+}
+调用示例
+备注：鉴权文档鉴权方式-AppKey获取
+
+#!/usr/bin/env python
+# encoding: utf-8
+import uuid
+import requests
+
+# 注意替换AppId、AppKey
+AppId = 'your_AppId'
+AppKey = "your_AppKey"
+DOMAIN = 'api-ai.vivo.com.cn'
+URI = '/search/geo'
+METHOD = 'GET'
+
+
+def geocode_poi():
+""" 地理编码（poi搜索） """
+params = {
+'keywords': '卓悦汇',
+'city': '深圳',
+'page_num': 1,
+'page_size': 3,
+"requestId": str(uuid.uuid4())
+}
+print(params['requestId'])
+headers = {
+"Authorization": f"Bearer {AppKey}",
+"Content-type": "application/json",
+}
+print('headers', headers)
+url = 'http://{}{}'.format(DOMAIN, URI)
+response = requests.get(url, params=params, headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+    else:
+        data = response.text
+    print(data)
+
+
+if __name__ == "__main__":
+geocode_poi()
+常见问题
+Q：地理编码的只能转成高德坐标系吗？是否支持转成百度？
+
+A：不支持，如果需要自己进行转换，请参考：https://github.com/wandergis/coordTransform_py
+
+端侧3B模型
+
+更新时间：2026-05-25 04:33:43
+
+能力介绍
+提供3B蓝心大模型BlueLM的移动端推理能力
+
+SDK和模型下载
+SDK以C++ so库和头文件的形式提供，涉及在android端native开发
+端侧LLM 推理SDK
+
+在复赛阶段提供[BlueLM开源3B],
+云真机 （X300 Pro）机器 在/sdcard/1225/路径下默认内置模型
+注意：禁止修改模型文件夹内各个文件的名字， 否则将无法读取模型，造成错误
+
+接入和调用流程
+建议使用Android Studio 进行开发，可以通过界面新建一个native工程 或者 建议直接基于demo源码进行二次开发
+image1.png
+若自建新的工程需要进行如下操作：
+1.添加aar文件
+将 llm-sdk-release.aar复制到项目的 app/libs/ 目录下。
+在 app/build.gradle 中添加依赖：
+
+android {
+defaultConfig {
+minSdk 28
+ndk { abiFilters 'arm64-v8a' }  // 仅支持 arm64
+}
+}
+dependencies {
+implementation files('libs/llm-sdk-release.aar')
+implementation 'androidx.appcompat:appcompat:1.6.1'
+}
+2.在AndroidManifest.xml中添加权限
+
+<!-- 存储权限：读取 /sdcard/ 下的模型文件 -->
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+android:maxSdkVersion="32"/>
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+android:maxSdkVersion="32"/>
+<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+<uses-permission android:name="mediatek.permission.ACCESS_APU_SYS"/>
+...
+<uses-native-library android:name="libdmabufheap.so" android:required="false" />
+<uses-native-library android:name="libvcap_npu_network_v1.so" android:required="false" />
+Snipaste_20240528_145619.jpg
+
+即可使用SDK进行开发,也可以参考我们提供的demo源码
+
+接口介绍
+文本审核
+为了避免暴力、涉黄、涉政、辱骂等非法文本的生成，我们要求参赛选手在使用端侧大语言模型推理时，接入系统文本审核能力。
+具体使用方式参考文档
+
+LLM推理
+LLM 推理能力通过 Java 封装类 LlmManager 提供，底层对接 LLM_inference_manager 原生库。
+
+LlmConfig 初始化参数
+参数	类型	默认值	描述
+modelPath	String	—	必填，模型目录路径，云真机内置路径为 /sdcard/1225
+nCtx	int	2048	上下文长度(支持2048 4096 8192)
+nThreads	int	4	CPU 线程数
+npuPower	int	100	NPU 档位，MTK 取值 10~100，越高性能越好
+temperature	float	0.0	越大输出越随机，0 为贪心解码
+topP	float	1.0	累计概率阈值，超出后不再考虑剩余 token
+topK	int	1	单步最多考虑的 token 数量
+LlmManager 接口
+init(LlmConfig config) → int
+初始化模型，返回 0 表示成功，非 0 为错误码。耗时操作，需在子线程调用。
+
+generate(String prompt, TokenCallback callback)
+执行推理，流式回调每个 token。prompt 需套用 chat 模板：
+
+[|Human|]:用户输入\n[|AI|]:
+推理在内部子线程执行，回调方法在主线程被调用，可直接更新 UI。
+
+interrupt()
+中断当前正在进行的推理。
+
+release()
+释放原生资源，Activity 销毁时必须调用。
+
+TokenCallback 回调接口
+public interface TokenCallback {
+void onToken(String token);                    // 每生成一个 token 回调一次
+void onComplete(LlmStats stats);               // 推理正常结束
+void onError(int code, String message);        // 推理失败
+}
+调用示例
+C++调用示例
+// 初始化
+llm_params params;
+params.model_path      = const_cast<char*>(modelPath.c_str());
+params.context_suffix  = "";         // 留空，SDK 自动从 config JSON 选择
+params.vocab_json_path = nullptr;
+params.merges_path     = nullptr;
+params.runtime         = DX3_APU;
+params.model_type      = BlueLM_3B;
+params.tokenizer_type  = 1;         // 1 = bluelm tokenizer
+params.n_predict       = 512;      // 最大生成 token 数
+params.n_ctx           = 2048;
+params.n_threads       = 4;
+params.npu_power       = 100;
+
+      llm_instance_ = new LLM_inference_manager();
+      llm_trace trace;
+      LLM_CODE res = llm_instance_->init_base(params, trace);
+      if (res != LLM_SUCCESS) {
+          delete llm_instance_;
+          llm_instance_ = nullptr;
+          return res;
+      }
+        ...
+      // 推理（prompt 需套用 chat 模板）
+      std::string prompt = "[|Human|]:" + userInput + "\n[|AI|]:";
+      res = llm_instance_->forward(prompt, true, eval_cb, handle);
+      if (res != LLM_SUCCESS && res != LLM_INTERRUPTED) {
+          return res;
+      }
+      // 每次推理结束后必须 reset
+      llm_instance_->llm_reset();
+        ...
+      // 释放
+      llm_instance_->release();
+      delete llm_instance_;
+      llm_instance_ = nullptr;
+JAVA调用示例
+// 1. 初始化（在子线程中调用，init_base 耗时较长）
+LlmManager llmManager = new LlmManager();
+
+      LlmConfig config = new LlmConfig();
+      config.modelPath    = "/sdcard/1225"; // 模型目录
+      config.nPredict     = 512;
+      config.nCtx         = 2048;
+      config.nThreads     = 4;
+      config.npuPower     = 100;
+      config.temperature  = 0.95f;
+      config.topP         = 0.8f;
+      config.topK         = 50;
+
+      new Thread(() -> {
+          int ret = llmManager.init(config);
+          runOnUiThread(() -> {
+              if (ret == 0) {
+                  // 初始化成功，可以开始推理
+              } else {
+                  // 初始化失败，错误码 ret
+              }
+          });
+      }).start();
+
+      // 2. 推理（在子线程中执行，通过回调流式返回结果）
+      // prompt 必须套用 chat 模板，否则输出乱码
+      String prompt = "[|Human|]:" + userInput + "\n[|AI|]:";
+
+      llmManager.generate(prompt, new TokenCallback() {
+          @Override
+          public void onToken(String token) {
+              // 每个 token 回调一次，在主线程更新 UI
+              tvResponse.append(token);
+          }
+
+          @Override
+          public void onComplete(LlmStats stats) {
+              // 推理完成，stats 包含 TPS 等性能指标
+          }
+
+          @Override
+          public void onError(int code, String message) {
+              // 推理失败
+          }
+      });
+
+      // 3. 中断推理（可选）
+      llmManager.interrupt();
+
+      // 4. 释放资源（Activity 销毁时调用）
+      llmManager.release();
+示例 Demo
+已编译的APK demo
+APK demo
+
+云真机已内置了端侧模型, 若使用云真机 运行apk，
+可以使用adb connect 远程连接对应机器ip, 再执行 adb install即可开始体验。
+
+screen.png
+MainActivity：LLM 推理能力调用，界面布局从上到下：
+
+模型路径输入框（etModelPath）：填写模型文件所在目录，默认 /sdcard/1225
+"初始化"按钮（btnInit）：点击后在后台线程调用 LlmManager.init()，成功后按钮变为"已初始化"且置灰，输入框和发送按钮解锁
+响应展示区（tvResponse，带 ScrollView）：流式显示模型逐 token 输出，自动滚动到底部
+Prompt 输入框（etInput）：输入用户消息（无需手动添加模板，发送时自动包装为 [|Human|]:...\n[|AI|]:）
+"发送"按钮（btnSend）：触发推理，推理期间置灰防止重复提交
+"中断"按钮（btnInterrupt）：推理中可见，点击后调用 LlmManager.interrupt() 停止当前推理
+注意：首次启动需授予「所有文件访问权限」（Android 13+），App 启动时会自动跳转权限设置页。
+
+源代码
+端侧LLM源代码
+
+已验证开发环境
+条件	要求
+Android 目标平台	arm64-v8a
+芯片	MediaTek DX5（MT6993 等）
+Android SDK	API 28+
+NDK	r23（交叉编译 llm_utils 时使用）
+CMake	3.22.1+（Android Studio 自带）
+Gradle	8.5
+AGP	8.2.2
+安装完Android Studio后，可以将adb所在路径添加至系统Path，方便后续用adb命令行执行操作
+
+常见问题
+demo APK安装失败，闪退
+APK运行依赖系统版本，需运行在比赛特定机型上面，并保证指定模型路径下存在完整的模型文件
+
+Android 权限
+Android 13+ 读取 /sdcard/ 需要 MANAGE_EXTERNAL_STORAGE，READ_EXTERNAL_STORAGE 带 maxSdkVersion=32 在 Android 13 上无效。
+AndroidManifest.xml：
+
+<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+运行时申请（MainActivity）：
+
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+if (!Environment.isExternalStorageManager()) {
+Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+Uri.parse("package:" + getPackageName()));
+startActivity(intent);
+}
+}
+
+端侧文本审核
+
+更新时间：2024-05-28 05:53:45
+
+服务简介
+提供端侧文本审核服务，智能检测文本内容是否命中包括暴力、涉黄、涉政、辱骂等敏感内容，命中则审核不通过
+
+接入准备
+SDK下载
+AIGC文本审核aar
+
+Android Studio接入
+添加SDK依赖包：在工程项目下找到文件夹libs，如果没有请新建，将下载的aar包放入
+添加依赖：打开应用级"build.gradle"文件，在"dependencies"中添加依赖
+dependencies {
+implementation files('libs/aisdk-cms-local-1.0.0.0.aar')
+}
+混淆配置: 编译APK前需配置混淆配置文件，避免混淆导致功能异常
+在应用级根目录下打开混淆配置文件，如 proguard-rules.pro。添加如下配置
+-keep class com.vivo.aisdk.**{*;}
+-dontwarn com.vivo.aisdk.**
+-keep class com.vivo.aiservice.cms.**{*;}
+应用开发指南
+SDK初始化
+应用开发之前，必须先完成SDK初始化流程，完成公共参数的设置和相关初始化设置
+
+接口函数
+/**
+* 初始化sdk
+* @param context     context上下文对象
+* @param listener    初始化回调结果
+  */
+  public void init(final Context context, final IInitializeListener listener)
+  输入输出
+  参数明细	类型	描述
+  context	Context	上下文对象
+  listener	IInitializeListener	初始化结果回调
+  调用示例
+  import com.vivo.aisdk.cms.local.CmsLocalFrame; // CMS服务总类
+  import com.vivo.aisdk.cms.local.IInitializeListener; // 初始化回调
+  import com.vivo.aisdk.cms.local.utils.LogUtils;  // sdk内部日志工具类
+
+// 在Application中初始化CMS本地化框架
+@Override
+public void onCreate() {
+super.onCreate();
+// 初始化CMS本地化框架，建议在Application中初始化
+CmsLocalFrame.getInstance().init(this, new IInitializeListener() {
+@Override
+public void onInitSuccess() {
+LogUtils.i("sdk 初始化成功!");
+}
+@Override
+public void onInitFailed(int code, String message) {
+LogUtils.e("sdk 初始化失败 code = " + code + ", message = " + message);
+}
+});
+}
+初始化异常code
+code	描述
+110010	初始化参数，缺少context
+文本审核功能
+初始化SDK完成之后即可开始具体功能-文本审核的开发工作
+
+接口函数
+/**
+* 文本审核
+*
+* @param text    待审核文本
+* @param timeout 超时时间
+* @return ResponseResult  结果
+  */
+  public void TextModeration(String text, CommApiCallBack<ResponseResult> callBack, int timeout)
+  输入输出
+  参数明细	类型	描述
+  text	String	待审核文本
+  callback	CommApiCallBack	callback 结果回调
+  timeout	long	超时时间（ms）
+  ResponseResult 数据结构：
+
+参数明细	类型	描述
+code	int	0:成功；其他: 异常，详见错误码说明
+msg	String	错误信息
+data	String	结果数据内容，json 字符串
+respId	String	id
+ver	String	协议版本
+api	int	sdk接口
+type	String	service 能力接口类型
+extras	String	extral
+ResponseResult.getData 数据结构:
+
+参数明细	类型	描述
+result	String	0:审核通过， 1：嫌疑， 2：审核不通过
+结果示例
+
+{"result":"0"}
+调用示例
+1.导入必须类：在使用文本审核API时，将相关的类添加至工程
+
+import com.vivo.aisdk.cms.local.CmsLocalFrame;   // CMS服务总类
+import com.vivo.aisdk.cms.local.internal.CommApiCallBack; // 结果回调
+import com.vivo.aisdk.cms.local.internal.ResponseResult;  // 接口返回的结果类
+import com.vivo.aisdk.cms.local.utils.LogUtils;   // log工具类
+
+2. 应用CmsLocalFrame进行接口调用， 异步获取审核结果
+   String text = "待测试文本内容";
+   long  timeout = 5000;
+
+CmsLocalFrame.getInstance().TextModeration(text, new CommApiCallBack<ResponseResult>() {
+@Override
+public void onCallBack(ResponseResult responseResult) {
+if (responseResult.getCode() == CMSLocalConstants.ResultCode.SUCCESS) {
+//调用成功：解析结果
+String data = responseResult.getData();
+try {
+JSONObject json = new JSONObject(data);
+// 系统默认方法将 String转换为int 类型。
+int result = json.getInt("result");
+if (result == 0) {
+// 审核通过
+LogUtils.d("checked");
+} else if (result == 1) {
+// 存在嫌疑
+LogUtils.d("Under suspicion");
+} else if (result == 2) {
+// 未通过审核
+LogUtils.d("not checked");
+}
+} catch (JSONException e) {
+LogUtils.e("json error: " + e.getMessage());
+}
+} else {
+//返回错误码
+showMesage(responseResult.getMsg());
+}
+}
+},  timeout);
+结果示例
+测试文案	结果
+如果您想管理自己的数字货币，可以到数字人民币的官方服务平台，注册开通个人钱包，这样可以帮助您保护好自己的现金，不必担心跟踪失败或遗失问题，并有效地进行数字货币交易和转账。	2：审核不通过
+今天天气真不错	0：审核通过
+错误码
+code	错误描述
+0	success：成功
+110001	未知错误
+110002	参数错误
+110003	远程服务不存在
+110004	远程服务未连接
+110005	能力不支持
+110006	请求超时
+110007	返回结果为空
+110008	鉴权失败
+110009	远程服务错误
+110010	初始化参数，缺少context
+文本审核Demo体验
+Demo简介：
+
+Application入口: DemoApplication，sdk初始化
+MainActivity：文本审核功能实现。
+
+文本输入框：输入审核文本
+
+"Submit"按钮：调用输入文本进行文本审核
+
+结果展示: 展示审核结果
+
+Demo apk
+
+Demo 源码
+
+常见问题
+文本审核失败，toast提示错误信息 “unexception error, result is null”
+请确保审核能力在调用前已成功初始化，需要进一步分析可以抓取“_V_AiSdk”相关的LOG，并联系vivo的开发人员
+
