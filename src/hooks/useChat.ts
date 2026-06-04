@@ -10,11 +10,12 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { callLLM, callLLMWithImage } from '../services/llm';
-import { DEFAULT_MODEL, LLM_API_CONFIG } from '../services/llm.config';
+import { DEFAULT_MODEL, LLM_API_CONFIG, generateUUID } from '../services/llm.config';
 import {
-  ASSISTANT_SYSTEM_PROMPT,
+  AI_MODES,
   IMAGE_ANALYSIS_PROMPT,
   IMAGE_GENERATION_PROMPT,
+  AIMode,
 } from '../services/prompts';
 import { sanitizeOutput } from '../services/llm.errors';
 import { ChatMessage } from '../types/chat';
@@ -45,6 +46,7 @@ export function useChat() {
       userMessage: string,
       history: ChatMessage[],
       onUpdate: (fullText: string, isDone: boolean) => void,
+      mode: AIMode = 'chat',
     ): Promise<string> => {
       // 预检查：AppKey 是否已配置
       if (
@@ -63,11 +65,12 @@ export function useChat() {
       abortRef.current = controller;
 
       // 构建消息列表（system + user/assistant 成对 + 最新 user）
+      const modePrompt = AI_MODES.find(m => m.key === mode)?.prompt ?? AI_MODES[0].prompt;
       const messages: Array<{
         role: 'system' | 'user' | 'assistant';
         content: string;
       }> = [
-        { role: 'system', content: ASSISTANT_SYSTEM_PROMPT },
+        { role: 'system', content: modePrompt },
         ...history.map(m => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
@@ -228,38 +231,48 @@ export function useChat() {
 /**
  * 调用 Vivo 图片生成 API
  *
- * Vivo AIGC 平台提供"图片生成"能力（文生图/图生图）。
- * API 路径和参数格式以平台文档为准。
+ * API: POST /api/v1/image_generation
+ * 模型: Doubao-Seedream-4.5
+ * 耗时: 10-30秒/张
+ * 限制: 10次/天, 300次总计
+ *
+ * 返回生成的图片 URL（非 Base64）
  */
 async function callImageGeneration(prompt: string): Promise<string | null> {
   try {
     const appKey = LLM_API_CONFIG.appKey;
+    const requestId = generateUUID();
+    const timestamp = Math.floor(Date.now() / 1000);
+
     const response = await fetch(
-      'https://api-ai.vivo.com.cn/v1/images/generations',
+      `https://api-ai.vivo.com.cn/api/v1/image_generation?module=aigc&request_id=${requestId}&system_time=${timestamp}`,
       {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${appKey}`,
         },
         body: JSON.stringify({
+          model: 'Doubao-Seedream-4.5',
           prompt,
-          n: 1,
-          size: '1024x1024',
-          response_format: 'b64_json',
+          parameters: { size: '2K' },
         }),
       },
     );
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Image Generation Error ${response.status}: ${errText}`);
+      throw new Error(`图片生成失败 ${response.status}: ${errText}`);
     }
 
     const data = await response.json();
-    // 返回 Base64 图片 Data URL
-    const b64 = data?.data?.[0]?.b64_json;
-    return b64 ? `data:image/png;base64,${b64}` : null;
+    if (data.code !== 0) {
+      throw new Error(`图片生成失败 [${data.code}]: ${data.message}`);
+    }
+
+    // 返回第一张图片的 URL
+    const imageUrl = data?.data?.images?.[0]?.url ?? data?.data?.image;
+    return imageUrl ?? null;
   } catch {
     return null;
   }

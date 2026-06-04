@@ -1193,3 +1193,470 @@ print(response.status_code, response.text)
 if __name__ == '__main__':
 ocr_test()
 
+文本翻译
+
+更新时间：2026-03-13 09:23:46
+
+能力简介
+将一段源语言文本转换成目标语言文本，可根据语言参数的不同实现多国语言之间的互译。
+
+接口说明
+访问地址：https://api-ai.vivo.com.cn/translation/query/self
+
+访问方式：POST
+
+请求参数
+Header
+参数	类型	是否必须	值
+Content-Type	string	是	application/json
+Authorization	String	是	Bearer AppKey
+查询参数
+参数	类型	是否必须	值
+requestId	uuid	是	uuid值
+Body
+参数名称	类型	是否必须	示例值	描述
+from	string	是	en	源语言，语言code见下方语言代码对照表
+to	string	是	zh-CHS	目标语言，语言code见下方语言代码对照表
+text	string	是	hello	需要翻译的句子，utf-8编码，长度限制1200
+app	string	是	test	应用包名称，填写"test"
+requestId	string	是	6bb798a1-3b5d-4f57-8a82-c480b56c14df	请求id，比如uuid
+响应结果
+Header
+参数名称	参数值	描述
+Content-Type	multipart/form-data
+Body
+参数名称	类型	是否必须	示例值	描述
+code	number	否		
+data	object	否		
++from	string	否		
++to	string	否		
++translation	string	否		翻译结果
++text	string	否		
+msg	null	否		
+requestId		否		
+响应结果示例
+
+{
+"code": 0,
+"data": {
+"text": "我很好",
+"from": "zh-CHS",
+"to": "en",
+"translation": "I'm fine"
+},
+"msg": "",
+"requestId": "uuid"
+}
+调用示例
+备注：鉴权文档鉴权方式-AppKey获取
+
+# encoding: utf-8
+
+import uuid
+import requests
+
+# 注意替换AppId、AppKey
+AppId = 'your_AppId'
+AppKey = "your_AppKey"
+URI = '/translation/query/self'
+DOMAIN = 'api-ai.vivo.com.cn'
+METHOD = 'POST'
+
+def text_translate():
+text = "I'm fine"
+data = {
+'from': 'en',
+'to': 'zh-CHS',
+'text': text,
+'app': 'test',
+'requestId': str(uuid.uuid4())
+}
+params = {
+"requestId": str(uuid.uuid4())
+}
+print(params['requestId'])
+headers = {
+"Authorization": f"Bearer {AppKey}",
+"Content-type": "application/json",
+}
+print('headers', headers)
+url = 'https://{}{}'.format(DOMAIN, URI)
+
+    res = requests.post(url=url, headers=headers, data=data, params=params)
+
+    if res.status_code == 200:
+        print(res.json())
+    else:
+        print(res.status_code, res.text)
+
+
+if __name__ == '__main__':
+text_translate()
+错误返回code
+
+code	解释
+10000	服务器异常
+20000	参数错误
+语言代码对照表
+下表为各语言对应代码：
+
+其中auto可以识别中文、英文、日文、韩文。
+
+语言	代码
+中文	zh-CHS
+英文	en
+日文	ja
+韩文	ko
+
+文本向量
+
+更新时间：2026-04-15 04:54:55
+
+服务简介
+将用户提供的文本信息表示成计算机可识别的实数向量，用数值向量来表示文本的语义。
+
+接口说明
+访问地址：https://api-ai.vivo.com.cn/embedding-model-api/predict/batch
+
+访问方式：POST
+
+请求参数
+Header
+
+参数	类型	是否必须	值
+Content-Type	string	是	application/json
+Authorization	String	是	Bearer AppKey
+查询参数
+参数	类型	是否必须	值
+requestId	uuid	是	uuid值
+Body
+
+参数名称	类型	是否必须	说明
+model_name	string	是	文本向量化模型名称，当前支持：m3e-base、bge-base-zh-v1.5
+sentences	array	是	需要向量化文本的JSON格式数组，示例：[“自动追焦相关报表”, “太古汇内云集逾180家知名品牌”]
+model_name说明
+
+model_name	说明
+bge-base-zh-v1.5	近期开源很优秀的模型，擅长中文的召回场景，即较短的query召回较长的文本。query前面需要加上instruction：“为这个句子生成表示以用于检索相关文章：”。介绍见https://huggingface.co/BAAI/bge-base-zh-v1.5
+m3e-base	近期开源很优秀的模型，擅长中文的文本比对场景，介绍见https://huggingface.co/moka-ai/m3e-base
+我们重点优化了bge-base-zh-v1.5和m3e-base模型的推理性能，分别是我们调研的效果最好的中文模型和英文模型。
+
+请求参数示例
+
+# Content-Type设置为JSON格式，如"Content-Type: application/json"
+{
+"model_name": "m3e-base",
+"sentences":["自动追焦相关报表","太古汇内云集逾180家知名品牌","其中逾70个品牌为第一次进驻广州","交通：商场M层连通地铁三号线石牌桥站；毗邻地铁一号线体育中心站。"]
+}
+如果是bge-base-zh模型，长文本的请求示例
+
+# Content-Type设置为JSON格式，如"Content-Type: application/json"
+{
+"model_name": "bge-base-zh-v1.5",
+"sentences":["自动追焦相关报表","太古汇内云集逾180家知名品牌","其中逾70个品牌为第一次进驻广州","交通：商场M层连通地铁三号线石牌桥站；毗邻地铁一号线体育中心站。"]
+}
+如果是bge-base-zh模型，短query的请求示例
+
+# Content-Type设置为JSON格式，如"Content-Type: application/json"
+{
+"model_name": "bge-base-zh-v1.5",
+"sentences":["为这个句子生成表示以用于检索相关文章：地铁交通","为这个句子生成表示以用于检索相关文章：太古汇"]
+}
+响应结果
+参数	类型	说明
+data	array	对应sentence的文本向量的实际值
+返回响应示例
+
+# data主体是向量的二维数组，向量维度与模型相关
+{"data":[[-0.006009635981172323,0.0320364348590374,-0.012086838483810425,0.04545353353023529,....],[-0.04749463126063347,0.03422294184565544,0.011880395002663136,...]]
+调用示例
+备注：鉴权文档鉴权方式-AppKey获取
+
+#!/usr/bin/env python
+# encoding: utf-8
+
+import requests
+import uuid
+
+# 注意替换AppId、AppKey
+AppId = 'your_AppId'
+AppKey = "your_AppKey"
+DOMAIN = 'api-ai.vivo.com.cn'
+URI = '/embedding-model-api/predict/batch'
+METHOD = 'POST'
+
+
+def embedding():
+params = {}
+post_data = {
+"model_name": "m3e-base",
+"sentences": ["豫章故郡，洪都新府", "星分翼轸，地接衡庐"]
+}
+params = {
+"requestId": str(uuid.uuid4())
+}
+print(params['requestId'])
+headers = {
+"Authorization": f"Bearer {AppKey}",
+"Content-type": "application/json",
+}
+print('headers', headers)
+url = 'https://{}{}'.format(DOMAIN, URI)
+response = requests.post(url, json=post_data, headers=headers,params=params )
+if response.status_code == 200:
+print(response.json())
+else:
+print(response.status_code, response.text)
+
+
+if __name__ == '__main__':
+embedding()
+常见问题
+1.Q：文本向量化能力支持的语种有哪些？
+
+A：中文、英文，暂不支持其他语种向量化的功能。
+
+2.Q: 文本长度是否有限制？
+
+A：文本长度控制在500字以内。
+
+服务简介
+将用户提供的文本信息从语义的角度来判断两者相似度。
+
+接口说明
+请求地址：https://api-ai.vivo.com.cn/rerank
+
+访问方式：POST
+
+请求参数
+Header
+
+参数	是否必须	值
+Content-Type	是	application/json
+Authorization	String	是
+查询参数
+
+参数	类型	是否必须	值
+requestId	uuid	是	uuid值
+Body
+
+参数名称	类型	是否必须	说明
+model_name	string	是	文本向量化模型名称，当前支持：bge-reranker-large
+query	string	是	示例：“科技发展趋势”
+sentences	array	是	需要向量化文本的JSON格式数组，示例：[“自动追焦相关报表”, “太古汇内云集逾180家知名品牌”]
+model_name说明
+
+model_name	说明
+bge-reranker-large	介绍见https://huggingface.co/BAAI/bge-reranker-large
+我们重点优化了bge-reranker-large模型的推理性能。
+
+请求参数示例
+
+# Content-Type设置为JSON格式，如"Content-Type: application/json"
+{
+"model_name": "bge-reranker-large",
+"query": "科技品牌发展",
+"sentences":["自动追焦相关报表","太古汇内云集逾180家知名品牌","其中逾70个品牌为第一次进驻广州","交通：商场M层连通地铁三号线石牌桥站；毗邻地铁一号线体育中心站。"]
+}
+响应结果
+参数	类型	说明
+data	array	对应sentences中每条文本与query文本的相似度
+返回响应示例
+
+# data主体是数组，长度与输入的sentences数组相同，代表query与sentences中每条文本的相似度
+{"data":[-8.067169189453125,-5.946075439453125,-4.977325439453125,-8.957794189453125]}
+调用示例
+备注：鉴权文档鉴权方式-AppKey获取
+
+#!/usr/bin/env python
+# encoding: utf-8
+
+import requests
+import uuid
+
+# 注意替换AppId、AppKey
+AppId = 'your_AppId'
+AppKey = "your_AppKey"
+DOMAIN = 'api-ai.vivo.com.cn'
+URI = '/rerank'
+METHOD = 'POST'
+
+
+def rerank():
+params = {}
+post_data = {
+"model_name": "bge-reranker-large",
+"query": "老夫聊发少年狂",
+"sentences": ["豫章故郡，洪都新府", "星分翼轸，地接衡庐"]
+}
+params = {
+"requestId": str(uuid.uuid4())
+}
+print(params['requestId'])
+headers = {
+"Authorization": f"Bearer {AppKey}",
+"Content-type": "application/json",
+}
+print('headers', headers)
+url = 'https://{}{}'.format(DOMAIN, URI)
+response = requests.post(url, json=post_data, headers=headers,params=params )
+if response.status_code == 200:
+print(response.json())
+else:
+print(response.status_code, response.text)
+
+
+if __name__ == '__main__':
+rerank()
+
+常见问题
+1.Q：文本相似度能力支持的语种有哪些？
+
+A：中文、英文，暂不支持其他语种向量化的功能。
+
+2.Q: 文本长度是否有限制？
+
+A：文本 query + sentence 长度控制在500字以内。
+
+询改写
+
+更新时间：2026-03-13 09:25:25
+
+服务简介
+查询改写是RAG/AI搜索链路中的重要环节，目的是使用模型对用户当前输入的问题（query）进行理解，并改写为适合搜索引擎检索的query。改写后的结果可根据情况融入历史对话的关键信息，可对复杂问题进行拆解，使得检索召回的知识更加全面、丰富，为最终生成回答提供有力支持。
+
+接口说明
+外网请求地址：https://api-ai.vivo.com.cn/query_rewrite_base
+
+请求方式：POST
+
+请求参数
+Header
+参数名称	类型	是否必须	参数值
+Content-Type	string	是	application/json
+Authorization	String	是	Bearer AppKey
+查询参数
+参数	类型	是否必须	值
+requestId	uuid	是	uuid值
+Body
+参数名称	类型	是否必须	说明
+prompts	list	是	历史问答与当前问题组成的数组，目前支持传入最多3轮历史信息
+prompts中参数说明
+
+参数名称	类型	是否必须	说明
+q3	string	是	上三轮问题，如没有则传空字符串
+a3	string	是	上三轮回答，如没有则传空字符串
+q2	string	是	上两轮问题，如没有则传空字符串
+a2	string	是	上两轮回答，如没有则传空字符串
+q1	string	是	上一轮问题，如没有则传空字符串
+a1	string	是	上一轮回答，如没有则传空字符串
+q	string	是	当前轮问题
+Body示例
+
+{
+"prompts": [
+[
+"",
+"",
+"",
+"",
+"战狼2是谁主演的",
+"《战狼2》是由吴京执导并主演的一部军事战争题材电影。影片中，吴京饰演了主角冷锋，他是一名退役的特种部队军人，在非洲执行任务时遭遇了一连串危机和战斗。因此，《战狼2》的主演是吴京。"
+],
+[
+"第一部里有他吗"
+]
+]
+}
+示例说明
+
+{
+"prompts": [
+[
+"",  // q3, 上三轮问题
+"",  // a3, 上三轮回答
+"",  // q2, 上两轮问题
+"",   // a2, 上两轮回答
+"战狼2是谁主演的",  // q1, 上一轮问题
+"《战狼2》是由吴京执导并主演的一部军事战争题材电影。影片中，吴京饰演了主角冷锋，他是一名退役的特种部队军人，在非洲执行任务时遭遇了一连串危机和战斗。因此，《战狼2》的主演是吴京。" // a1, 上一轮回答
+],
+[
+"第一部里有他吗" // q，当前轮问题
+]
+]
+}
+响应结果
+参数	类型	说明
+code	int	0: 成功，其它表示失败，详细见下方错误码说明
+result	list	改写后结果
+结果示例
+
+{'result': ['《战狼》第一部里有吴京吗'], 'code': 0}
+错误码说明
+
+错误码（code）	含义
+0	正常
+-2	请求列表格式错误
+-3	当前query长度大于50
+-4	当前query含有特定词语（A类）
+-5	当前query含有特定词语（B类）
+-6	上轮历史只有query或只有answer
+-8	当前query含有特定模版不进行改写
+-9	模型判定无需改写
+-3002	服务运行异常
+调用示例
+备注：鉴权文档鉴权方式-AppKey获取
+
+#!/usr/bin/env python
+# encoding: utf-8
+
+import json
+import uuid
+
+import requests
+
+# 注意替换AppId、AppKey
+AppId = 'your_AppId'
+AppKey = "your_AppKey"
+URI = '/query_rewrite_base'
+DOMAIN = 'api-ai.vivo.com.cn'
+METHOD = 'POST'
+
+
+def query_rewrite():
+params = {}
+post_data = {
+"prompts": [
+[
+"",
+"",
+"",
+"",
+"战狼2是谁主演的",
+"《战狼2》是由吴京执导并主演的一部军事战争题材电影。影片中，吴京饰演了主角冷锋，他是一名退役的特种部队军人，在非洲执行任务时遭遇了一连串危机和战斗。因此，《战狼2》的主演是吴京。"
+],
+[
+"第一部里有他吗"
+]
+]
+}
+data = json.dumps(post_data)
+params = {
+"requestId": str(uuid.uuid4())
+}
+print(params['requestId'])
+headers = {
+"Authorization": f"Bearer {AppKey}",
+"Content-type": "application/json",
+}
+print('headers', headers)
+
+    url = 'http://{}{}'.format(DOMAIN, URI)
+    response = requests.post(url, data=data, headers=headers, params=params)
+    if response.status_code == 200:
+        print(response.json())
+    else:
+        print(response.status_code, response.text)
+
+if __name__ == '__main__':
+query_rewrite()

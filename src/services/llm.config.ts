@@ -12,14 +12,18 @@ import OpenAI from 'openai';
 /** 可变的运行时配置（替换 process.env） */
 export const LLM_API_CONFIG: {
   appKey: string;
+  appId: string;
   baseUrl: string;
   model: string;
   premiumModel: string;
+  imageModel: string;
 } = {
   appKey: 'your_app_key_here',
+  appId: '2026482448',
   baseUrl: 'https://api-ai.vivo.com.cn/v1',
   model: 'Doubao-Seed-2.0-mini',
   premiumModel: 'Volc-DeepSeek-V3.2',
+  imageModel: 'Doubao-Seedream-4.5',
 };
 
 /** 设置 AppKey（App 启动时从 AsyncStorage 或 .env 文件中读取后调用） */

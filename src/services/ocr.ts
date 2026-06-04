@@ -33,6 +33,7 @@ export type OCRResult = {
 export async function recognizeText(base64Image: string): Promise<OCRResult> {
   const { LLM_API_CONFIG } = require('./llm.config');
   const appKey = LLM_API_CONFIG.appKey;
+  const appId = LLM_API_CONFIG.appId;
   const requestId = generateUUID();
   const domain = 'api-ai.vivo.com.cn';
   const uri = '/ocr/general_recognition';
@@ -43,10 +44,10 @@ export async function recognizeText(base64Image: string): Promise<OCRResult> {
   const formData = new URLSearchParams();
   formData.append('image', pureBase64);
   formData.append('pos', '2');
-  formData.append('businessid', `aigc_${requestId}`);
+  formData.append('businessid', `aigc${appId}`);
 
   const response = await fetch(
-    `https://${domain}${uri}?requestId=${requestId}`,
+    `http://${domain}${uri}?requestId=${requestId}`,
     {
       method: 'POST',
       headers: {

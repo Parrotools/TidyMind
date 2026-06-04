@@ -1437,11 +1437,11 @@ onToken: (content, reasoning) => {
 └──────┬───────────┘
        ▼
 ┌──────────────────┐
-│ 步骤2: 图片生成   │  → POST /v1/images/generations
-│ Vivo 图片生成 API │  返回: Base64 图片
+│ 步骤2: 图片生成   │  → POST /api/v1/image_generation
+│ Vivo 图片生成 API │  返回: 图片 URL (Doubao-Seedream-4.5)
 └──────┬───────────┘
        ▼
-    AI 回复: "图片已生成\n\n绘图提示词: ..."
+    AI 回复: "图片已生成\n\n绘图提示词: ...\n图片链接: https://..."
 ```
 
 #### 4.8.3 关键代码
@@ -1488,6 +1488,110 @@ export async function callLLMWithImage(
 - 图片预览 `BorderRadius.md` (8px) → 与卡片圆角一致
 - 删除按钮 `Colors.textPrimary` (#262626) 圆形 → 与整体暗色系一致
 - 输入区附件提示文字 `Colors.textTertiary` (#b2b2b2) → 与占位符同色
+
+#### 4.8.6 图片生成 API 细节
+
+```
+POST https://api-ai.vivo.com.cn/api/v1/image_generation
+     ?module=aigc&request_id={uuid}&system_time={unix_timestamp}
+
+Header: Authorization: Bearer {AppKey}
+        Content-Type: application/json
+
+Body (文生图):
+{ "model": "Doubao-Seedream-4.5", "prompt": "...", "parameters": { "size": "2K" } }
+
+Body (图生图):
+{ "model": "Doubao-Seedream-4.5", "prompt": "...", "image": "https://...或base64" }
+
+Response:
+{
+  "code": 0,
+  "data": {
+    "images": [{ "url": "https://...", "size": "2048x2048" }],
+    "usage": { "image_count": 1, "output_tokens": 16384 }
+  }
+}
+```
+
+**限制**：初赛每天 10 次，总计 300 次。生成一张图片需 10-30 秒。
+
+---
+
+### 4.9 场景九：文本翻译
+
+**涉及文件**：新增 `src/services/translate.ts`
+
+**功能**：将文本翻译为中文/英文/日文/韩文。
+
+#### 4.9.1 API 规格
+
+```
+POST https://api-ai.vivo.com.cn/translation/query/self?requestId={uuid}
+
+{ "from": "en", "to": "zh-CHS", "text": "Hello", "app": "test", "requestId": "{uuid}" }
+
+Response: { "code": 0, "data": { "translation": "你好" } }
+```
+
+支持语言：`zh-CHS`(中) `en`(英) `ja`(日) `ko`(韩)
+
+#### 4.9.2 实现
+
+```typescript
+// src/services/translate.ts
+export async function translateText(
+  text: string, from: Language, to: Language
+): Promise<string> {
+  const response = await fetch(
+    `https://api-ai.vivo.com.cn/translation/query/self?requestId=${requestId}`,
+    { method: 'POST', headers: { Authorization: `Bearer ${appKey}` },
+      body: JSON.stringify({ from, to, text: text.slice(0, 1200), app: 'test', requestId }) }
+  );
+  const data = await response.json();
+  return data?.data?.translation ?? '';
+}
+```
+
+**应用场景**：外文笔记翻译、AI 对话中即时翻译、多语言笔记管理。
+
+---
+
+### 4.10 AI 助手多模式系统
+
+**涉及文件**：`src/screens/AssistantScreen.tsx`、`src/hooks/useChat.ts`、`src/services/prompts.ts`
+
+AI 助手现在支持 **5 种工作模式**，通过顶部横向模式选择器一键切换：
+
+| 模式 | 图标 | System Prompt | 快捷提示 |
+|------|------|---------------|---------|
+| 💬 **对话** | 通用知识助手 | 笔记总结、学习计划、知识问答 | 总结笔记、创建学习计划 |
+| 🌐 **翻译** | 多语翻译 | 中英日韩互译 + 术语注释 | 翻译为英文/日文/韩文 |
+| ✍️ **写作** | 写作指导 | 润色、改写、结构优化、语法检查 | 润色这段话、帮我写作文 |
+| 📷 **识图** | 图片分析 | 多模态视觉理解 | 拍照/相册 |
+| 🎨 **绘图** | AI 文生图 | Prompt 优化 + Doubao-Seedream-4.5 | 夕阳海滩、赛博城市 |
+
+#### 4.10.1 模式切换流程
+
+```
+顶部模式栏: [💬对话] [🌐翻译] [✍️写作] [📷识图] [🎨绘图]
+                                      ↑ 点击切换
+                ┌─────────────────────┘
+                ▼
+┌──────────────────────────────┐
+│ 模式横幅更新：图标 + 模式说明  │
+│ 快捷提示切换为模式专属建议     │
+│ System Prompt 切换            │
+│ 输入框 placeholder 变化       │
+└──────────────────────────────┘
+```
+
+#### 4.10.2 key 设计决策
+
+- 模式切换时**不清空对话历史**——用户可以跨模式对话
+- 每个模式有**独立的 System Prompt**——LLM 回复风格随模式变化
+- 识图模式自动弹出拍照选择器；绘图模式自动填入提示前缀
+- 模式信息通过 `mode` 参数传入 `sendMessage()`，选择对应 System Prompt
 
 ---
 
