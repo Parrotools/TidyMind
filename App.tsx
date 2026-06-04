@@ -7,82 +7,128 @@
  * @format
  */
 
-import React from 'react';
-import { Image, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  LayoutChangeEvent,
+  Platform,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { BottomTabBarProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList, TabParamList } from './src/navigation/types';
 import AssistantScreen from './src/screens/AssistantScreen';
 import ExportScreen from './src/screens/ExportScreen';
 import FavoritesScreen from './src/screens/FavoritesScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import SplashScreen from './src/screens/SplashScreen';
 import ImportScreen from './src/screens/ImportScreen';
 import FilesScreen from './src/screens/FilesScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { AppStateProvider } from './src/state/AppState';
-import { BorderRadius, Colors, Spacing, Typography } from './src/theme/designTokens';
+import { BorderRadius, Colors, Spacing } from './src/theme/designTokens';
+import { setLLMAppKey } from './src/services/llm.config';
+
+// ── 配置 AppKey ────────────────────────────────────────────────────────────
+setLLMAppKey('sk-xuanji-2026482448-cGFpZlhZc3dIVEVIekdHTw==');
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
-// ── Icon assets (from Figma) ──────────────────────────────────────────────
-
-const ICONS = {
-  home: {
-    uri: 'https://www.figma.com/api/mcp/asset/67233ba1-3882-4b3c-925c-4094381708f1',
-  },
-  homeActive: {
-    uri: 'https://www.figma.com/api/mcp/asset/67233ba1-3882-4b3c-925c-4094381708f1',
-  },
-  files: {
-    uri: 'https://www.figma.com/api/mcp/asset/37a1b243-0e31-4164-9f80-aafd9bc3f6a0',
-  },
-  filesActive: {
-    uri: 'https://www.figma.com/api/mcp/asset/37a1b243-0e31-4164-9f80-aafd9bc3f6a0',
-  },
-  favorites: {
-    uri: 'https://www.figma.com/api/mcp/asset/6f279a2c-64be-42de-93c8-06c9ed541152',
-  },
-  favoritesActive: {
-    uri: 'https://www.figma.com/api/mcp/asset/6f279a2c-64be-42de-93c8-06c9ed541152',
-  },
-  profile: {
-    uri: 'https://www.figma.com/api/mcp/asset/9d5d9f13-8906-475a-8a1e-19d4a23e7c9f',
-  },
-  profileActive: {
-    uri: 'https://www.figma.com/api/mcp/asset/9d5d9f13-8906-475a-8a1e-19d4a23e7c9f',
-  },
-};
-
-// ── Custom Tab Bar (Figma-style) ──────────────────────────────────────────
+// ── Custom Tab Bar (Figma-style, animated) ───────────────────────────────
 
 type TabConfig = {
   key: string;
   label: string;
-  icon: { uri: string };
-  iconActive: { uri: string };
+  icon: string;
+  iconActive: string;
 };
 
 const TAB_CONFIGS: TabConfig[] = [
-  { key: 'Home', label: '首页', icon: ICONS.home, iconActive: ICONS.homeActive },
-  { key: 'Files', label: '文件', icon: ICONS.files, iconActive: ICONS.filesActive },
-  { key: 'Favorites', label: '收藏', icon: ICONS.favorites, iconActive: ICONS.favoritesActive },
-  { key: 'Profile', label: '我的', icon: ICONS.profile, iconActive: ICONS.profileActive },
+  { key: 'Home', label: '首页', icon: '⌂', iconActive: '⌂' },
+  { key: 'Files', label: '文件', icon: '⊞', iconActive: '⊞' },
+  { key: 'Favorites', label: '收藏', icon: '☆', iconActive: '★' },
+  { key: 'Profile', label: '我的', icon: '◎', iconActive: '◉' },
 ];
 
+/** Fixed pill dimensions — measured approx from Figma design */
+const PILL_PADDING_H = 18;
+const PILL_GAP = 6;
+const INACTIVE_ICON_SIZE = 26;
+const ACTIVE_ICON_SIZE = 20;
+const ACTIVE_FONT_SIZE = 15;
+
+// Fixed pill dimensions — wide enough to fully cover icon + label + padding
+const FIXED_PILL_WIDTH = 96;
+const PILL_HEIGHT = 41;
+const TAB_MIN_HEIGHT = 48;
+
 function CustomTabBar({ state, navigation }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+  const rowWidthRef = useRef(0);
+  const didInitialSnap = useRef(false);
+  const activeIndex = state.index;
+  const tabCount = state.routes.length;
+  const pillLeft = useRef(new Animated.Value(0)).current;
+
+  // Measure the row once so we can divide it into equal slices.
+  // This guarantees the pill position is consistent regardless of
+  // individual tab content widths (which change active ↔ inactive).
+  const handleRowLayout = useCallback((e: LayoutChangeEvent) => {
+    rowWidthRef.current = e.nativeEvent.layout.width;
+  }, []);
+
+  useEffect(() => {
+    if (rowWidthRef.current === 0) {
+      return;
+    }
+
+    // 每个 Tab 占据等宽的水平切片，胶囊居中
+    const sliceW = rowWidthRef.current / tabCount;
+    const targetLeft = sliceW * activeIndex + sliceW / 2 - FIXED_PILL_WIDTH / 2;
+
+    if (!didInitialSnap.current) {
+      pillLeft.setValue(targetLeft);
+      didInitialSnap.current = true;
+      return;
+    }
+
+    Animated.spring(pillLeft, {
+      toValue: targetLeft,
+      tension: 60,
+      friction: 8,
+      useNativeDriver: false,
+    }).start();
+  }, [activeIndex, pillLeft, tabCount]);
+
   return (
-    <View style={tabStyles.container}>
+    <View style={[tabStyles.container, { paddingBottom: insets.bottom }]}>
       {/* Handle indicator */}
       <View style={tabStyles.handle} />
-      {/* Tab row */}
-      <View style={tabStyles.row}>
+
+      {/* Tab row with absolutely-positioned animated pill */}
+      <View style={tabStyles.row} onLayout={handleRowLayout}>
+        {/* Sliding pill — vertically centered via top offset */}
+        <Animated.View
+          style={[
+            tabStyles.pillBg,
+            {
+              transform: [{ translateX: pillLeft }],
+              width: FIXED_PILL_WIDTH,
+              height: PILL_HEIGHT,
+            },
+          ]}
+        />
+
         {state.routes.map((route, index) => {
-          const isActive = state.index === index;
+          const isActive = activeIndex === index;
           const config = TAB_CONFIGS[index];
           if (!config) {
             return null;
@@ -104,20 +150,18 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
               }}
             >
               {isActive ? (
-                <View style={tabStyles.activePill}>
-                  <Image
-                    source={config.iconActive}
-                    style={tabStyles.icon}
-                    resizeMode="contain"
-                  />
-                  <Text style={tabStyles.activeLabel}>{config.label}</Text>
+                <View style={tabStyles.activeContent}>
+                  <Animated.Text style={tabStyles.activeIcon}>
+                    {config.iconActive}
+                  </Animated.Text>
+                  <Animated.Text style={tabStyles.activeLabel}>
+                    {config.label}
+                  </Animated.Text>
                 </View>
               ) : (
-                <Image
-                  source={config.icon}
-                  style={[tabStyles.icon, tabStyles.inactiveIcon]}
-                  resizeMode="contain"
-                />
+                <Animated.Text style={tabStyles.inactiveIcon}>
+                  {config.icon}
+                </Animated.Text>
               )}
             </Pressable>
           );
@@ -130,7 +174,18 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
 const tabStyles = StyleSheet.create({
   container: {
     backgroundColor: Colors.surface,
-    paddingBottom: 0,
+    borderTopWidth: 0,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.textPrimary,
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: -2 },
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   handle: {
     width: 108,
@@ -139,7 +194,7 @@ const tabStyles = StyleSheet.create({
     backgroundColor: Colors.navHandle,
     alignSelf: 'center',
     marginTop: Spacing.sm,
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.sm,
   },
   row: {
     flexDirection: 'row',
@@ -147,31 +202,51 @@ const tabStyles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.sm,
+    position: 'relative',
+  },
+  // Sliding pill — absolutely positioned behind active content
+  pillBg: {
+    position: 'absolute',
+    top: (TAB_MIN_HEIGHT - PILL_HEIGHT) / 2,
+    left: 0,
+    backgroundColor: Colors.active,
+    borderRadius: BorderRadius.full,
   },
   tab: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: TAB_MIN_HEIGHT,
+    minWidth: 64,
+    zIndex: 1,
   },
-  activePill: {
+  activeContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.active,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: 18,
-    paddingVertical: 6,
-    gap: 4,
+    justifyContent: 'center',
+    paddingHorizontal: PILL_PADDING_H,
+    paddingVertical: 0,
+    gap: PILL_GAP,
+    minWidth: 80,
+    height: PILL_HEIGHT,
+  },
+  activeIcon: {
+    fontSize: ACTIVE_ICON_SIZE,
+    color: Colors.textOnDark,
+    lineHeight: ACTIVE_ICON_SIZE + 2,
+    textAlign: 'center',
   },
   activeLabel: {
-    ...Typography.tabLabel,
+    fontSize: ACTIVE_FONT_SIZE,
+    fontWeight: '500',
     color: Colors.textOnDark,
-  },
-  icon: {
-    width: 28,
-    height: 28,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   inactiveIcon: {
-    opacity: 0.55,
+    fontSize: INACTIVE_ICON_SIZE,
+    color: Colors.textSecondary,
+    lineHeight: INACTIVE_ICON_SIZE + 2,
+    textAlign: 'center',
   },
 });
 
@@ -198,6 +273,12 @@ function TabsNavigator() {
 // ── App ───────────────────────────────────────────────────────────────────
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
