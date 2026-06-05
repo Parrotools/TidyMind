@@ -1,14 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+  ActivityIndicator, Alert, FlatList, Platform,
+  Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
@@ -16,567 +9,180 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import NoteCard from '../components/NoteCard';
 import NoteEditorModal from '../components/NoteEditorModal';
 import { useSemanticSearch } from '../hooks/useSemanticSearch';
-import { RootStackParamList } from '../navigation/types';
 import { useAppState } from '../state/AppState';
-import { BorderRadius, Colors, Spacing } from '../theme/designTokens';
+import { BorderRadius, Colors, Shadows, Spacing } from '../theme/designTokens';
+import { RootStackParamList } from '../navigation/types';
 import { Note } from '../types/note';
 
-const QUICK_ACTIONS = [
-  { id: 'import', label: '导入' },
-  { id: 'export', label: '导出' },
-  { id: 'assistant', label: 'AI 助手' },
-];
-
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen() {
-  const navigation = useNavigation<NavigationProp>();
-  const { notes, isLoading, upsertNote, deleteNote, toggleFavorite } =
-    useAppState();
-  const {
-    mode,
-    isSearching,
-    aiResults,
-    aiSummary,
-    error,
-    searchWithAI,
-    searchLocal,
-    clear,
-  } = useSemanticSearch();
-
-  const [query, setQuery] = useState('');
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [editingNote, setEditingNote] = useState<Note | null>(null);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
-
-  // ── 标签统计与筛选 ──────────────────────────────────────────────────
+  const nav = useNavigation<Nav>();
+  const { notes, isLoading, upsertNote, deleteNote, toggleFavorite } = useAppState();
+  const { mode, isSearching, aiResults, aiSummary, error, searchWithAI, searchLocal, clear } = useSemanticSearch();
+  const [q, setQ] = useState('');
+  const [editor, setEditor] = useState(false);
+  const [editing, setEditing] = useState<Note | null>(null);
+  const [tag, setTag] = useState<string | null>(null);
 
   const tagCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    notes.forEach(n => {
-      if (n.tag) counts[n.tag] = (counts[n.tag] ?? 0) + 1;
-    });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const m: Record<string,number> = {};
+    notes.forEach(n => { if(n.tag) m[n.tag] = (m[n.tag]??0)+1; });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,6);
   }, [notes]);
 
-  // ── 搜索结果 ──────────────────────────────────────────────────────
+  const local = useMemo(() => q.trim()?searchLocal(q,notes):[], [q,notes,searchLocal]);
+  const list = useMemo(() => {
+    let b = [...notes].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+    if(mode==='ai') b = aiResults.map(r=>r.note);
+    else if(mode==='keyword') b = local;
+    if(tag) b = b.filter(n=>n.tag===tag);
+    return b.slice(0,20);
+  }, [notes,mode,aiResults,local,tag]);
 
-  const localResults = useMemo(() => {
-    if (!query.trim()) return [];
-    return searchLocal(query, notes);
-  }, [query, notes, searchLocal]);
-
-  const filteredNotes = useMemo(() => {
-    let base = [...notes].sort(
-      (a, b) => b.updatedAt.localeCompare(a.updatedAt),
-    );
-    if (mode === 'ai') {
-      base = aiResults.map(r => r.note);
-    } else if (mode === 'keyword') {
-      base = localResults;
-    }
-    // 标签筛选
-    if (selectedTag) {
-      base = base.filter(n => n.tag === selectedTag);
-    }
-    return base;
-  }, [notes, mode, aiResults, localResults, selectedTag]);
-
-  // ── 统计 ──────────────────────────────────────────────────────────
-
-  const stats = useMemo(() => {
-    const lastUpdated = notes.reduce((latest, note) => {
-      if (!latest) return note.updatedAt;
-      return note.updatedAt > latest ? note.updatedAt : latest;
-    }, '');
-    return {
-      count: notes.length,
-      favorites: notes.filter(note => note.isFavorite).length,
-      lastUpdated,
-    };
-  }, [notes]);
-
-  // ── 搜索处理 ──────────────────────────────────────────────────────
-
-  const handleSearchSubmit = () => {
-    if (!query.trim()) return;
-    searchWithAI(query, notes);
+  const hSave = (p:{id?:string;title:string;content:string;tag:string}) => {
+    if(!p.title){Alert.alert('缺少标题');return;}
+    upsertNote(p); setEditor(false);
   };
-
-  const handleClearSearch = () => {
-    setQuery('');
-    clear();
-  };
-
-  const handleQueryChange = (text: string) => {
-    setQuery(text);
-    if (!text.trim()) clear();
-  };
-
-  // ── 笔记操作 ──────────────────────────────────────────────────────
-
-  const handleOpenNew = () => {
-    setEditingNote(null);
-    setEditorVisible(true);
-  };
-
-  const handleOpenNote = (note: Note) => {
-    navigation.navigate('NoteDetail', { noteId: note.id });
-  };
-
-  const handleSave = (payload: {
-    id?: string;
-    title: string;
-    content: string;
-    tag: string;
-  }) => {
-    if (!payload.title) {
-      Alert.alert('缺少标题', '请在保存前添加标题。');
-      return;
-    }
-    upsertNote(payload);
-    setEditorVisible(false);
-  };
-
-  const handleDelete = (noteId: string) => {
-    Alert.alert('删除笔记？', '此操作无法撤销。', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: () => {
-          deleteNote(noteId);
-          setEditorVisible(false);
-        },
-      },
-    ]);
-  };
-
-  const handleQuickAction = (id: string) => {
-    if (id === 'import') navigation.navigate('Import');
-    else if (id === 'export') navigation.navigate('Export');
-    else if (id === 'assistant') navigation.navigate('Assistant');
-  };
-
-  // ── 渲染 ──────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
+    <SafeAreaView style={S.safe} edges={['top']}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={S.scroll}>
+        {/* ── Header ── */}
+        <View style={S.head}>
           <View>
-            <Text style={styles.appTitle}>TidyMind</Text>
-            <Text style={styles.subtitle}>知识工作空间</Text>
+            <Text style={S.greeting}>早上好</Text>
+            <Text style={S.date}>知识库 · {notes.length} 篇笔记</Text>
           </View>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>TM</Text>
+          <Pressable style={S.avatar} onPress={()=>nav.navigate('Settings')}>
+            <Text style={S.avText}>TM</Text>
+          </Pressable>
+        </View>
+
+        {/* ── AI Hero ── */}
+        <Pressable style={S.hero} onPress={()=>nav.navigate('Assistant')}>
+          <View style={S.heroGlow} />
+          <Text style={S.heroEmoji}>✨</Text>
+          <View style={S.heroContent}>
+            <Text style={S.heroTitle}>AI 知识助手</Text>
+            <Text style={S.heroDesc}>上传文件或输入主题，自动整理为结构化笔记</Text>
+          </View>
+          <View style={S.heroArrow}><Text style={S.heroArrowText}>→</Text></View>
+        </Pressable>
+
+        {/* ── Search ── */}
+        <View style={S.searchRow}>
+          <View style={S.searchBar}>
+            <Text style={S.searchIcon}>⌕</Text>
+            <TextInput style={S.searchInput} placeholder="搜索笔记..." placeholderTextColor={Colors.textTertiary}
+              value={q} onChangeText={t=>{setQ(t);if(!t.trim())clear();}} onSubmitEditing={()=>q.trim()&&searchWithAI(q,notes)} returnKeyType="search" />
+            {q.length>0&&<Pressable onPress={()=>{setQ('');clear();}} hitSlop={8}><Text style={S.clearIcon}>✕</Text></Pressable>}
           </View>
         </View>
 
-        {/* Search bar */}
-        <View style={styles.searchRow}>
-          <View style={styles.searchCard}>
-            <Text style={styles.searchIcon}>⌕</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder={
-                mode === 'idle'
-                  ? '搜索笔记...'
-                  : mode === 'keyword'
-                    ? '输入关键词过滤 — 按回车AI搜索'
-                    : 'AI 语义搜索结果'
-              }
-              placeholderTextColor={Colors.textTertiary}
-              value={query}
-              onChangeText={handleQueryChange}
-              onSubmitEditing={handleSearchSubmit}
-              returnKeyType="search"
-            />
-            {query.length > 0 && (
-              <Pressable onPress={handleClearSearch} hitSlop={8}>
-                <Text style={styles.clearIcon}>✕</Text>
-              </Pressable>
-            )}
+        {/* AI search status */}
+        {mode==='ai'&&(
+          <View style={S.aiBar}>
+            {isSearching?<ActivityIndicator size="small" color={Colors.onPrimaryContainer}/>:null}
+            <Text style={S.aiBarText} numberOfLines={2}>{isSearching?'AI 正在分析...':error||aiSummary}</Text>
+            <Pressable onPress={()=>{setQ('');clear();}}><Text style={S.aiBarBack}>返回</Text></Pressable>
           </View>
-          {query.trim().length > 0 && mode !== 'ai' && (
-            <Pressable
-              style={styles.aiSearchButton}
-              onPress={handleSearchSubmit}
-            >
-              <Text style={styles.aiSearchText}>AI</Text>
-            </Pressable>
-          )}
+        )}
+
+        {/* ── Tags ── */}
+        {mode!=='ai'&&tagCounts.length>0&&(
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={S.tagRow}>
+            <Pressable style={[S.chip,!tag&&S.chipOn]} onPress={()=>setTag(null)}><Text style={[S.chipT,!tag&&S.chipTOn]}>全部</Text></Pressable>
+            {tagCounts.map(([t])=>(
+              <Pressable key={t} style={[S.chip,tag===t&&S.chipOn]} onPress={()=>setTag(p=>p===t?null:t)}><Text style={[S.chipT,tag===t&&S.chipTOn]}>{t}</Text></Pressable>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* ── Section ── */}
+        <View style={S.secHead}>
+          <Text style={S.secTitle}>{tag?`「${tag}」`:mode==='ai'?'搜索结果':'最近笔记'}</Text>
+          <Pressable onPress={()=>{setEditing(null);setEditor(true);}}><Text style={S.newBtn}>+ 新建</Text></Pressable>
         </View>
 
-        {/* AI 搜索状态栏 */}
-        {mode === 'ai' && (
-          <View style={styles.aiStatusBar}>
-            {isSearching ? (
-              <View style={styles.aiStatusRow}>
-                <ActivityIndicator size="small" color={Colors.textOnDark} />
-                <Text style={styles.aiStatusText}>AI 正在分析...</Text>
-              </View>
-            ) : error ? (
-              <Text style={styles.aiErrorText}>{error}</Text>
-            ) : (
-              <Text style={styles.aiStatusText} numberOfLines={2}>
-                {aiSummary}
-              </Text>
-            )}
-            <Pressable onPress={handleClearSearch}>
-              <Text style={styles.aiBackText}>返回全部</Text>
-            </Pressable>
+        {/* ── Notes Grid ── */}
+        {isLoading?<ActivityIndicator size="small" color={Colors.primary} style={{marginTop:40}}/>:
+         list.length===0?(
+          <View style={S.empty}>
+            <Text style={S.emptyIcon}>{q?'🔍':'📝'}</Text>
+            <Text style={S.emptyTitle}>{q?'未找到笔记':'开始记录吧'}</Text>
           </View>
+        ):(
+          <FlatList data={list} keyExtractor={i=>i.id} numColumns={2} key="grid-2col"
+            columnWrapperStyle={{gap:12}} scrollEnabled={false}
+            renderItem={({item})=><NoteCard note={item} onPress={n=>nav.navigate('NoteDetail',{noteId:n.id})} onToggleFavorite={n=>toggleFavorite(n.id)}/>} />
         )}
+      </ScrollView>
 
-        {/* Stats (hidden when searching) */}
-        {mode !== 'ai' && (
-          <>
-            <View style={styles.statsRow}>
-              <View style={styles.statCard}>
-                <Text style={styles.statValue}>{stats.count}</Text>
-                <Text style={styles.statLabel}>笔记</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statValue}>{stats.favorites}</Text>
-                <Text style={styles.statLabel}>收藏</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statValue}>
-                  {stats.lastUpdated
-                    ? new Date(stats.lastUpdated).toLocaleDateString('zh-CN')
-                    : '--'}
-                </Text>
-                <Text style={styles.statLabel}>最近更新</Text>
-              </View>
-            </View>
+      {/* ── FAB ── */}
+      <Pressable style={S.fab} onPress={()=>nav.navigate('Assistant')}>
+        <Text style={S.fabIcon}>✨</Text>
+      </Pressable>
 
-            {/* Quick actions */}
-            <View style={styles.quickRow}>
-              {QUICK_ACTIONS.map(action => (
-                <Pressable
-                  key={action.id}
-                  style={({ pressed }) => [
-                    styles.quickAction,
-                    pressed && styles.quickActionPressed,
-                  ]}
-                  onPress={() => handleQuickAction(action.id)}
-                >
-                  <Text style={styles.quickText}>{action.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </>
-        )}
-
-        {/* Tag filter bar */}
-        {mode !== 'ai' && tagCounts.length > 0 && (
-          <View style={styles.tagFilterWrap}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tagFilterInner}
-            >
-              <Pressable
-                style={[
-                  styles.tagFilterChip,
-                  !selectedTag && styles.tagFilterChipActive,
-                ]}
-                onPress={() => setSelectedTag(null)}
-              >
-                <Text
-                  style={[
-                    styles.tagFilterText,
-                    !selectedTag && styles.tagFilterTextActive,
-                  ]}
-                >
-                  全部 ({notes.length})
-                </Text>
-              </Pressable>
-              {tagCounts.map(([tag, count]) => (
-                <Pressable
-                  key={tag}
-                  style={[
-                    styles.tagFilterChip,
-                    selectedTag === tag && styles.tagFilterChipActive,
-                  ]}
-                  onPress={() =>
-                    setSelectedTag(prev => (prev === tag ? null : tag))
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.tagFilterText,
-                      selectedTag === tag && styles.tagFilterTextActive,
-                    ]}
-                  >
-                    {tag} ({count})
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Section header */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            {selectedTag
-              ? `「${selectedTag}」(${filteredNotes.length})`
-              : mode === 'ai'
-                ? `AI 搜索结果 (${filteredNotes.length})`
-                : mode === 'keyword'
-                  ? `匹配笔记 (${filteredNotes.length})`
-                  : '最近笔记'}
-          </Text>
-          {mode === 'idle' && (
-            <Pressable onPress={handleOpenNew}>
-              <Text style={styles.sectionAction}>+ 新建</Text>
-            </Pressable>
-          )}
-        </View>
-
-        {/* Note list */}
-        {isLoading ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator size="small" color={Colors.active} />
-          </View>
-        ) : (
-          <FlatList
-            data={filteredNotes.slice(0, 20)}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => (
-              <NoteCard
-                note={item}
-                onPress={handleOpenNote}
-                onToggleFavorite={note => toggleFavorite(note.id)}
-              />
-            )}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>
-                  {query ? '未找到匹配笔记' : '还没有笔记'}
-                </Text>
-                <Text style={styles.emptySubtitle}>
-                  {query
-                    ? '尝试其他关键词或调整查询'
-                    : '捕捉第一个想法，开始构建你的知识库'}
-                </Text>
-                {!query && (
-                  <Pressable
-                    style={styles.primaryButton}
-                    onPress={handleOpenNew}
-                  >
-                    <Text style={styles.primaryButtonText}>添加笔记</Text>
-                  </Pressable>
-                )}
-              </View>
-            }
-          />
-        )}
-      </View>
-
-      <NoteEditorModal
-        visible={editorVisible}
-        initialNote={editingNote}
-        onCancel={() => setEditorVisible(false)}
-        onSave={handleSave}
-        onDelete={handleDelete}
-      />
+      <NoteEditorModal visible={editor} initialNote={editing} onCancel={()=>setEditor(false)} onSave={hSave} onDelete={id=>{deleteNote(id);setEditor(false);}}/>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: Colors.backgroundStart },
-  container: { flex: 1, paddingHorizontal: Spacing.lg },
-  header: {
-    marginTop: Spacing.md,
-    marginBottom: Spacing.lg,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+const S = StyleSheet.create({
+  safe: { flex:1, backgroundColor:Colors.background },
+  scroll: { paddingHorizontal:20, paddingBottom:100 },
+  // Header
+  head: { flexDirection:'row',justifyContent:'space-between',alignItems:'flex-start',paddingTop:16,paddingBottom:20 },
+  greeting: { fontSize:30,fontWeight:'500',color:Colors.textPrimary,letterSpacing:-0.5 },
+  date: { fontSize:13,color:Colors.textSecondary,marginTop:4 },
+  avatar: { width:44,height:44,borderRadius:22,backgroundColor:Colors.primaryContainer,alignItems:'center',justifyContent:'center' },
+  avText: { color:Colors.onPrimaryContainer,fontWeight:'600',fontSize:15 },
+  // Hero
+  hero: {
+    flexDirection:'row',alignItems:'center',
+    backgroundColor:Colors.primaryContainer,
+    borderRadius:24,padding:20,marginBottom:20,
+    overflow:'hidden',position:'relative',
+    ...Shadows.md,
   },
-  appTitle: { fontSize: 24, fontWeight: '700', color: Colors.textPrimary },
-  subtitle: { fontSize: 14, color: Colors.textSecondary, marginTop: Spacing.xs },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.active,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: Colors.textOnDark, fontWeight: '700', fontSize: 16 },
-
+  heroGlow: { position:'absolute',top:-30,right:-20,width:120,height:120,borderRadius:60,backgroundColor:'rgba(103,80,164,0.15)' },
+  heroEmoji: { fontSize:32,marginRight:14 },
+  heroContent: { flex:1 },
+  heroTitle: { fontSize:17,fontWeight:'500',color:Colors.onPrimaryContainer },
+  heroDesc: { fontSize:13,color:Colors.onPrimaryContainer,opacity:0.7,lineHeight:18,marginTop:4 },
+  heroArrow: { width:32,height:32,borderRadius:16,backgroundColor:'rgba(103,80,164,0.15)',alignItems:'center',justifyContent:'center' },
+  heroArrowText: { fontSize:18,color:Colors.onPrimaryContainer },
   // Search
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  searchCard: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchIcon: {
-    fontSize: 16,
-    color: Colors.textTertiary,
-    marginRight: Spacing.sm,
-  },
-  searchInput: { flex: 1, fontSize: 14, color: Colors.textPrimary },
-  clearIcon: { fontSize: 14, color: Colors.textTertiary, padding: Spacing.xs },
-  aiSearchButton: {
-    backgroundColor: Colors.active,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
-  },
-  aiSearchText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textOnDark,
-  },
-
-  // AI status bar
-  aiStatusBar: {
-    backgroundColor: Colors.active,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  aiStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    flex: 1,
-  },
-  aiStatusText: {
-    fontSize: 12,
-    color: Colors.textOnDark,
-    flex: 1,
-    lineHeight: 18,
-  },
-  aiErrorText: { fontSize: 12, color: '#fee2e2', flex: 1 },
-  aiBackText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textOnDark,
-    marginLeft: Spacing.md,
-  },
-
-  // Stats
-  statsRow: {
-    flexDirection: 'row',
-    marginBottom: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    alignItems: 'center',
-  },
-  statValue: { fontSize: 18, fontWeight: '600', color: Colors.textPrimary },
-  statLabel: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    marginTop: Spacing.xs,
-  },
-
-  // Quick actions
-  quickRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-
-  // Tag filter
-  tagFilterWrap: {
-    marginBottom: Spacing.lg,
-  },
-  tagFilterInner: {
-    gap: Spacing.sm,
-    paddingRight: Spacing.lg,
-  },
-  tagFilterChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  tagFilterChipActive: {
-    backgroundColor: Colors.active,
-    borderColor: Colors.active,
-  },
-  tagFilterText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.textSecondary,
-  },
-  tagFilterTextActive: {
-    color: Colors.textOnDark,
-  },
-
-  // Quick actions (original)
-  quickAction: {
-    flex: 1,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.inactive,
-    alignItems: 'center',
-  },
-  quickActionPressed: { backgroundColor: Colors.active },
-  quickText: { color: Colors.textOnDark, fontWeight: '500', fontSize: 14 },
-
+  searchRow: { marginBottom:16 },
+  searchBar: { flexDirection:'row',alignItems:'center',backgroundColor:Colors.surfaceContainer,borderRadius:16,height:48,paddingHorizontal:16 },
+  searchIcon: { fontSize:17,color:Colors.textTertiary,marginRight:10 },
+  searchInput: { flex:1,fontSize:15,color:Colors.textPrimary },
+  clearIcon: { fontSize:15,color:Colors.textTertiary,padding:4 },
+  aiBar: { flexDirection:'row',alignItems:'center',backgroundColor:Colors.primaryContainer,borderRadius:14,padding:12,marginBottom:16,gap:8 },
+  aiBarText: { flex:1,fontSize:13,color:Colors.onPrimaryContainer,lineHeight:18 },
+  aiBarBack: { fontSize:13,fontWeight:'600',color:Colors.onPrimaryContainer },
+  // Tags
+  tagRow: { marginBottom:20 },
+  chip: { paddingHorizontal:14,paddingVertical:8,borderRadius:20,backgroundColor:Colors.surfaceContainer,marginRight:8 },
+  chipOn: { backgroundColor:Colors.primaryContainer },
+  chipT: { fontSize:13,color:Colors.textSecondary },
+  chipTOn: { color:Colors.onPrimaryContainer,fontWeight:'500' },
   // Section
-  sectionHeader: {
-    marginBottom: Spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  secHead: { flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:14 },
+  secTitle: { fontSize:15,fontWeight:'500',color:Colors.textSecondary },
+  newBtn: { fontSize:15,color:Colors.primary,fontWeight:'500' },
+  // Empty
+  empty: { alignItems:'center',paddingVertical:60 },
+  emptyIcon: { fontSize:40,marginBottom:12 },
+  emptyTitle: { fontSize:16,color:Colors.textSecondary },
+  // FAB
+  fab: {
+    position:'absolute',bottom:24,right:20,
+    width:56,height:56,borderRadius:28,
+    backgroundColor:Colors.primary,
+    alignItems:'center',justifyContent:'center',
+    ...Platform.select({ios:{shadowColor:'#6750A4',shadowOpacity:0.35,shadowRadius:12,shadowOffset:{width:0,height:4}},android:{elevation:8}}),
   },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: Colors.textPrimary },
-  sectionAction: { color: Colors.active, fontWeight: '500', fontSize: 14 },
-
-  // List
-  listContent: { paddingBottom: Spacing.xl },
-  loadingWrap: { marginTop: Spacing.xl },
-  emptyState: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.xl,
-    alignItems: 'center',
-  },
-  emptyTitle: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary },
-  emptySubtitle: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: Spacing.sm,
-    textAlign: 'center',
-  },
-  primaryButton: {
-    marginTop: Spacing.lg,
-    backgroundColor: Colors.active,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-  },
-  primaryButtonText: { color: Colors.textOnDark, fontWeight: '600', fontSize: 14 },
+  fabIcon: { fontSize:22 },
 });

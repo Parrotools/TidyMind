@@ -1,144 +1,116 @@
 /**
- * Design tokens extracted from Figma file (UTwDtr261uT6tPxo0Hjxdi)
+ * Material Design 3 — Design Tokens
  *
- * Figma screens use a 412px-wide canvas (iPhone-sized) with:
- * - Gradient background: #e0e0e0 → white
- * - Source Han Sans SC font family
- * - Dark/grayscale color palette
+ * Purple/Violet seed (#6750A4), tonal surface system, organic radii.
  */
 
+// ── MD3 色彩系统 ──────────────────────────────────────────────────
+
 export const Colors = {
-  /** Page background gradient start */
-  backgroundStart: '#e0e0e0',
-  /** Page background gradient end */
-  backgroundEnd: '#ffffff',
-  /** Card and input surfaces */
-  surface: '#ffffff',
-  /** Primary text - titles, headings */
-  textPrimary: '#262626',
-  /** Secondary text - descriptions, metadata */
-  textSecondary: '#4d4d4d',
-  /** Tertiary/disabled text, placeholders */
-  textTertiary: '#b2b2b2',
-  /** White text on dark backgrounds */
-  textOnDark: '#ffffff',
-  /** Text on surface (status bar) */
-  textOnSurface: '#1d1b20',
-  /** Active tab/button background */
-  active: '#262626',
-  /** Inactive tab/button background */
-  inactive: '#b2b2b2',
-  /** Active pill background for tags */
-  pillActive: '#4d4d4d',
-  /** Inactive pill background for tags */
-  pillInactive: '#b2b2b2',
-  /** Navigation handle color */
-  navHandle: '#1d1b20',
-  /** Destructive/delete */
-  danger: '#b91c1c',
-  /** Danger background */
-  dangerBg: '#fee2e2',
-  /** Modal overlay */
-  overlay: 'rgba(38, 38, 38, 0.45)',
-  /** Border / separator */
-  border: '#e7e7e7',
+  // 基础色
+  primary: '#6750A4',
+  primaryContainer: '#E8DEF8',
+  onPrimary: '#FFFFFF',
+  onPrimaryContainer: '#1D192B',
+
+  // 表面系统
+  background: '#FFFBFE',
+  surface: '#FFFBFE',
+  surfaceContainer: '#F3EDF7',
+  surfaceContainerLow: '#E7E0EC',
+
+  // 次要色
+  secondaryContainer: '#E8DEF8',
+  onSecondaryContainer: '#1D192B',
+  tertiary: '#7D5260',
+  onTertiary: '#FFFFFF',
+
+  // 文字
+  textPrimary: '#1C1B1F',
+  textSecondary: '#49454F',
+  textTertiary: '#938F99',
+  textOnDark: '#FFFFFF',
+
+  // 描边
+  outline: '#79747E',
+  border: '#CAC4D0',
+
+  // 功能色
+  active: '#6750A4',
+  inactive: '#E7E0EC',
+  danger: '#B3261E',
+  dangerBg: '#F9DEDC',
+  overlay: 'rgba(28, 27, 31, 0.40)',
 } as const;
+
+// ── 排版 ──────────────────────────────────────────────────────────
 
 export const Typography = {
-  titleLarge: {
-    fontSize: 24,
-    fontWeight: '700' as const,
-    lineHeight: 32,
-    color: Colors.textPrimary,
-  },
-  titleMedium: {
-    fontSize: 24,
-    fontWeight: '500' as const,
-    lineHeight: 24,
-    color: Colors.textPrimary,
-  },
-  bodyLarge: {
-    fontSize: 18,
-    fontWeight: '400' as const,
-    lineHeight: 24,
-    color: Colors.textSecondary,
-  },
-  bodyMedium: {
-    fontSize: 16,
-    fontWeight: '500' as const,
-    lineHeight: 24,
-    color: Colors.textPrimary,
-  },
-  bodySmall: {
-    fontSize: 14,
-    fontWeight: '400' as const,
-    lineHeight: 24,
-    color: Colors.textSecondary,
-  },
-  caption: {
-    fontSize: 12,
-    fontWeight: '400' as const,
-    lineHeight: 24,
-    color: Colors.textTertiary,
-  },
-  tabLabel: {
-    fontSize: 16,
-    fontWeight: '500' as const,
-    lineHeight: 22,
-  },
+  displayLarge: { fontSize: 36, fontWeight: '700' as const, lineHeight: 44, color: Colors.textPrimary },
+  headlineLarge: { fontSize: 28, fontWeight: '500' as const, lineHeight: 36, color: Colors.textPrimary },
+  headlineMedium: { fontSize: 24, fontWeight: '500' as const, lineHeight: 32, color: Colors.textPrimary },
+  titleLarge: { fontSize: 20, fontWeight: '500' as const, lineHeight: 28, color: Colors.textPrimary },
+  titleMedium: { fontSize: 16, fontWeight: '500' as const, lineHeight: 24, color: Colors.textPrimary },
+  bodyLarge: { fontSize: 16, fontWeight: '400' as const, lineHeight: 26, color: Colors.textPrimary },
+  bodyMedium: { fontSize: 14, fontWeight: '400' as const, lineHeight: 22, color: Colors.textSecondary },
+  bodySmall: { fontSize: 12, fontWeight: '400' as const, lineHeight: 18, color: Colors.textSecondary },
+  labelMedium: { fontSize: 14, fontWeight: '500' as const, lineHeight: 20, color: Colors.textPrimary },
+  labelSmall: { fontSize: 11, fontWeight: '500' as const, lineHeight: 16, color: Colors.textSecondary },
 } as const;
+
+// ── 圆角 ──────────────────────────────────────────────────────────
 
 export const BorderRadius = {
-  /** 4px – tag pills, small chips */
-  sm: 4,
-  /** 8px – cards, list items */
-  md: 8,
-  /** 12px – inputs, message bubbles */
-  lg: 12,
-  /** 16px – avatars, modal sheets */
-  xl: 16,
-  /** 100px – full-rounded pills, buttons */
-  full: 100,
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 24,
+  xl: 28,
+  xxl: 48,
+  full: 9999,
 } as const;
+
+// ── 间距 ──────────────────────────────────────────────────────────
 
 export const Spacing = {
-  /** 4px */
   xs: 4,
-  /** 8px */
   sm: 8,
-  /** 12px */
   md: 12,
-  /** 16px – standard horizontal padding */
   lg: 16,
-  /** 24px */
   xl: 24,
-  /** 66px – tab icon gap in bottom nav */
-  tabGap: 66,
+  xxl: 32,
+  xxxl: 48,
 } as const;
 
-export const Sizing = {
-  /** Status bar height */
-  statusBar: 52,
-  /** Bottom navigation handle area */
-  navHandleHeight: 24,
-  /** Tab icon size */
-  tabIcon: 32,
-  /** Tab bar active pill width */
-  tabPillWidth: 102,
-  /** Tab bar active pill height */
-  tabPillHeight: 41,
-  /** Search component width */
-  searchWidth: 37,
-  /** Search component height */
-  searchHeight: 24,
-  /** Back button size */
-  backButton: 24,
-  /** AI assistant avatar size */
-  aiAvatar: 96,
-  /** Chat input bar height */
-  chatInputHeight: 64,
-  /** Card min height */
-  cardMinHeight: 110,
-  /** Card width (412 - 2*16) */
-  cardWidth: 380,
+// ── 阴影 ──────────────────────────────────────────────────────────
+
+export const Shadows = {
+  none: {
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  sm: {
+    shadowColor: '#1C1B1F',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  md: {
+    shadowColor: '#1C1B1F',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  lg: {
+    shadowColor: '#1C1B1F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
 } as const;

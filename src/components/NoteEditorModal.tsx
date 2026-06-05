@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   input: {
-    backgroundColor: Colors.backgroundEnd,
+    backgroundColor: Colors.background,
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.backgroundEnd,
+    backgroundColor: Colors.background,
     borderRadius: BorderRadius.md,
     padding: Spacing.sm,
     marginTop: Spacing.sm,

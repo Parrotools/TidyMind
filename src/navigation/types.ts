@@ -10,7 +10,7 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   Home: undefined;
-  Files: undefined;
+  Review: undefined;
   Favorites: undefined;
   Profile: undefined;
 };

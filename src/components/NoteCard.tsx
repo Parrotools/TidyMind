@@ -1,84 +1,58 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { BorderRadius, Colors, Spacing } from '../theme/designTokens';
+import { BorderRadius, Colors, Shadows } from '../theme/designTokens';
 import { Note } from '../types/note';
 
-type NoteCardProps = {
+type Props = {
   note: Note;
   onPress: (note: Note) => void;
   onToggleFavorite?: (note: Note) => void;
 };
 
-function formatDate(isoDate: string) {
-  const date = new Date(isoDate);
-  if (Number.isNaN(date.getTime())) {
-    return '未知';
-  }
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) {
-    return '刚刚';
-  }
-  if (diffMin < 60) {
-    return `${diffMin}分钟前更新`;
-  }
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) {
-    return `${diffHours}小时前更新`;
-  }
-  return date.toLocaleDateString('zh-CN');
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${m}/${day} ${h}:${min}`;
 }
 
-export default function NoteCard({ note, onPress, onToggleFavorite }: NoteCardProps) {
-  const previewLine =
-    note.content.split('\n').find(line => line.trim().length > 0) ?? '';
+/** 提取纯文本摘要（去 markdown 标记） */
+function contentPreview(content: string): string {
+  const clean = content
+    .replace(/[#*>`\-\[\]!()|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return clean.slice(0, 80) || '暂无内容';
+}
+
+export default function NoteCard({ note, onPress, onToggleFavorite }: Props) {
+  const hasImage = note.images && note.images.length > 0;
 
   return (
     <Pressable style={styles.card} onPress={() => onPress(note)}>
-      {/* Top row: title + favorite */}
-      <View style={styles.headerRow}>
-        <Text style={styles.title} numberOfLines={1}>
-          {note.title}
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={event => {
-            event.stopPropagation?.();
-            onToggleFavorite?.(note);
-          }}
-          hitSlop={8}
-        >
-          <Text style={[styles.star, note.isFavorite && styles.starActive]}>
-            {note.isFavorite ? '★' : '☆'}
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* Image thumbnail */}
-      {note.images && note.images.length > 0 && (
-        <Image
-          source={{ uri: note.images[0] }}
-          style={styles.thumbnail}
-          resizeMode="cover"
-        />
+      {/* Image (only if present) */}
+      {hasImage && (
+        <Image source={{ uri: note.images![0] }} style={styles.image} resizeMode="cover" />
       )}
 
-      {/* Description preview */}
-      <Text style={styles.preview} numberOfLines={2}>
-        {previewLine || '暂无内容'}
-      </Text>
+      {/* Body */}
+      <View style={[styles.body, !hasImage && styles.bodyFull]}>
+        {!hasImage && (
+          <Text style={styles.preview} numberOfLines={3}>{contentPreview(note.content)}</Text>
+        )}
+        <Text style={styles.title} numberOfLines={2}>{note.title}</Text>
 
-      {/* Bottom row: date + tags */}
-      <View style={styles.bottomRow}>
-        <Text style={styles.date}>{formatDate(note.updatedAt)}</Text>
-        {note.tag ? (
-          <View style={styles.tagsRow}>
-            <View style={styles.tagPill}>
-              <Text style={styles.tagText}>{note.tag}</Text>
+        <View style={styles.footer}>
+          {note.tag ? (
+            <View style={styles.tag}>
+              <Text style={styles.tagText} numberOfLines={1}>{note.tag}</Text>
             </View>
-          </View>
-        ) : null}
+          ) : <View />}
+          <Text style={styles.date}>{formatDate(note.updatedAt)}</Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -86,64 +60,57 @@ export default function NoteCard({ note, onPress, onToggleFavorite }: NoteCardPr
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    marginBottom: Spacing.sm,
+    width: '48%',
+    backgroundColor: Colors.surfaceContainer,
+    borderRadius: BorderRadius.xl,
+    marginBottom: 12,
+    overflow: 'hidden',
+    ...Shadows.sm,
   },
-  headerRow: {
-    flexDirection: 'row',
+  image: {
+    width: '100%',
+    aspectRatio: 1.2,
+  },
+  body: {
+    padding: 14,
+    gap: 8,
+    minHeight: 100,
+  },
+  bodyFull: {
+    minHeight: 140,
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    flex: 1,
-    marginRight: Spacing.md,
-  },
-  star: {
-    fontSize: 18,
-    color: Colors.textTertiary,
-  },
-  starActive: {
-    color: '#f59e0b',
   },
   preview: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+    fontSize: 13,
     lineHeight: 20,
-    marginBottom: Spacing.sm,
+    color: Colors.textSecondary,
+    flex: 1,
   },
-  thumbnail: {
-    width: '100%',
-    height: 120,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.sm,
+  title: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: Colors.textPrimary,
+    lineHeight: 21,
   },
-  bottomRow: {
+  footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  date: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    gap: Spacing.xs,
-  },
-  tagPill: {
-    backgroundColor: Colors.border,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.sm,
+  tag: {
+    backgroundColor: Colors.primaryContainer,
+    borderRadius: BorderRadius.xs,
+    paddingHorizontal: 8,
     paddingVertical: 2,
+    maxWidth: '55%',
   },
   tagText: {
     fontSize: 11,
-    color: Colors.textSecondary,
+    color: Colors.onPrimaryContainer,
+    fontWeight: '500',
+  },
+  date: {
+    fontSize: 11,
+    color: Colors.textTertiary,
   },
 });

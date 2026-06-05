@@ -30,6 +30,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import SplashScreen from './src/screens/SplashScreen';
 import ImportScreen from './src/screens/ImportScreen';
 import FilesScreen from './src/screens/FilesScreen';
+import ReviewScreen from './src/screens/ReviewScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import NoteDetailScreen from './src/screens/NoteDetailScreen';
@@ -54,7 +55,7 @@ type TabConfig = {
 
 const TAB_CONFIGS: TabConfig[] = [
   { key: 'Home', label: '首页', icon: '⌂', iconActive: '⌂' },
-  { key: 'Files', label: '文件', icon: '⊞', iconActive: '⊞' },
+  { key: 'Review', label: '回顾', icon: '◷', iconActive: '◷' },
   { key: 'Favorites', label: '收藏', icon: '☆', iconActive: '★' },
   { key: 'Profile', label: '我的', icon: '◎', iconActive: '◉' },
 ];
@@ -177,28 +178,26 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
 
 const tabStyles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceContainer,
     borderTopWidth: 0,
     ...Platform.select({
       ios: {
-        shadowColor: Colors.textPrimary,
-        shadowOpacity: 0.04,
+        shadowColor: '#1C1B1F',
+        shadowOpacity: 0.08,
         shadowRadius: 8,
-        shadowOffset: { width: 0, height: -2 },
+        shadowOffset: { width: 0, height: 2 },
       },
-      android: {
-        elevation: 4,
-      },
+      android: { elevation: 2 },
     }),
   },
   handle: {
-    width: 108,
+    width: 32,
     height: 4,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.navHandle,
+    backgroundColor: Colors.textTertiary,
     alignSelf: 'center',
     marginTop: Spacing.sm,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   row: {
     flexDirection: 'row',
@@ -207,12 +206,11 @@ const tabStyles = StyleSheet.create({
     paddingBottom: Spacing.sm,
     position: 'relative',
   },
-  // Sliding pill — absolutely positioned behind active content
   pillBg: {
     position: 'absolute',
     top: (TAB_MIN_HEIGHT - PILL_HEIGHT) / 2,
     left: 0,
-    backgroundColor: Colors.active,
+    backgroundColor: Colors.primaryContainer,
     borderRadius: BorderRadius.full,
   },
   tab: {
@@ -234,14 +232,14 @@ const tabStyles = StyleSheet.create({
   },
   activeIcon: {
     fontSize: ACTIVE_ICON_SIZE,
-    color: Colors.textOnDark,
+    color: Colors.onPrimaryContainer,
     lineHeight: ACTIVE_ICON_SIZE + 2,
     textAlign: 'center',
   },
   activeLabel: {
     fontSize: ACTIVE_FONT_SIZE,
     fontWeight: '500',
-    color: Colors.textOnDark,
+    color: Colors.onPrimaryContainer,
     lineHeight: 20,
     textAlign: 'center',
   },
@@ -266,7 +264,7 @@ function TabsNavigator() {
       }}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Files" component={FilesScreen} />
+      <Tab.Screen name="Review" component={ReviewScreen} />
       <Tab.Screen name="Favorites" component={FavoritesScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
@@ -306,7 +304,7 @@ function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.backgroundStart,
+    backgroundColor: Colors.background,
   },
 });
 

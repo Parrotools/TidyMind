@@ -292,8 +292,11 @@ export default function FilesScreen() {
 
         {/* Notes list */}
         <FlatList
+          key="grid-2col"
           data={filteredNotes}
           keyExtractor={item => item.id}
+          numColumns={2}
+          columnWrapperStyle={{ gap: 12 }}
           renderItem={({ item }) => (
             <NoteCard
               note={item}
@@ -346,7 +349,7 @@ export default function FilesScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: Colors.backgroundStart },
+  safeArea: { flex: 1, backgroundColor: Colors.background },
   container: { flex: 1, paddingHorizontal: Spacing.lg },
 
   // Header

@@ -41,6 +41,7 @@ export function createEmptyBlock(type: string): NoteBlock {
     case 'list': return { id, type: 'list', style: 'bullet', items: [''] };
     case 'code': return { id, type: 'code', language: '', code: '' };
     case 'table': return { id, type: 'table', headers: ['列1', '列2'], rows: [['', '']] };
+    case 'image': return { id, type: 'image', src: '' };
     case 'divider': return { id, type: 'divider' };
     default: return { id, type: 'paragraph', text: '' };
   }
@@ -56,6 +57,7 @@ export function flattenBlocksForEditing(blocks: NoteBlock[]): NoteBlock[] {
       case 'quote':
       case 'list':
       case 'code':
+      case 'image':
       case 'divider':
         result.push(b);
         break;
@@ -133,6 +135,11 @@ export function contentToBlocks(content: string): NoteBlock[] {
     // 有序列表
     else if (/^\d+\.\s/.test(line)) {
       blocks.push({ id: createBlockId(), type: 'list', style: 'number', items: [line.replace(/^\d+\.\s/, '')] });
+    }
+    // 图片
+    else if (/^!\[.*\]\((.+)\)$/.test(line.trim())) {
+      const m = line.match(/^!\[.*\]\((.+)\)$/);
+      if (m) blocks.push({ id: createBlockId(), type: 'image', src: m[1] });
     }
     // 分隔线
     else if (/^(-{3,}|\*{3,})$/.test(line.trim())) {

@@ -175,7 +175,7 @@ export default function ExportScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: Colors.backgroundStart },
+  safeArea: { flex: 1, backgroundColor: Colors.background },
   container: { flex: 1, paddingHorizontal: Spacing.lg },
   headerRow: {
     marginTop: Spacing.md,
