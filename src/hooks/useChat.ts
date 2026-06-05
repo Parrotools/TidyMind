@@ -192,12 +192,12 @@ export function useChat() {
           ],
           stream: false, temperature: 0.7, maxTokens: 500,
         });
-        const imageUrl = await callImageGeneration(prompt);
-        const text = imageUrl
+        const result = await callImageGeneration(prompt);
+        const text = result.url
           ? `[🎨 图片已生成]\n\n绘图提示词: ${prompt}\n\n✅ 图片已自动保存为笔记。`
-          : `[🎨 绘图 Prompt]\n\n${prompt}\n\n⚠️ 图片生成超时，请重试。`;
+          : `[🎨 图片生成失败]\n\n绘图提示词: ${prompt}\n\n⚠️ ${result.error || '请重试'}`;
         onUpdate(text, true);
-        return { text, imageUrl, prompt };
+        return { text, imageUrl: result.url, prompt };
       } catch (err: unknown) {
         const errorMsg = `[错误] ${(err as Error).message}`;
         onUpdate(errorMsg, true);
@@ -235,7 +235,7 @@ export function useChat() {
  *
  * 返回生成的图片 URL（非 Base64）
  */
-async function callImageGeneration(prompt: string): Promise<string | null> {
+async function callImageGeneration(prompt: string): Promise<{ url: string | null; error?: string }> {
   try {
     const appKey = LLM_API_CONFIG.appKey;
     const requestId = generateUUID();
@@ -245,32 +245,22 @@ async function callImageGeneration(prompt: string): Promise<string | null> {
       `https://api-ai.vivo.com.cn/api/v1/image_generation?module=aigc&request_id=${requestId}&system_time=${timestamp}`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${appKey}`,
-        },
-        body: JSON.stringify({
-          model: 'Doubao-Seedream-4.5',
-          prompt,
-          parameters: { size: '2K' },
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${appKey}` },
+        body: JSON.stringify({ model: 'Doubao-Seedream-4.5', prompt, parameters: { size: '2K' } }),
       },
     );
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`图片生成失败 ${response.status}: ${errText}`);
-    }
-
     const data = await response.json();
     if (data.code !== 0) {
-      throw new Error(`图片生成失败 [${data.code}]: ${data.message}`);
+      const msg = data.code === 1003 ? '今日生成次数已用完（10次/天）' :
+                  data.code === 1002 ? '无图片生成权限' :
+                  `图片生成失败 [${data.code}]: ${data.message || '未知错误'}`;
+      return { url: null, error: msg };
     }
 
-    // 返回第一张图片的 URL
-    const imageUrl = data?.data?.images?.[0]?.url ?? data?.data?.image;
-    return imageUrl ?? null;
-  } catch {
-    return null;
+    const url = data?.data?.images?.[0]?.url ?? data?.data?.image ?? null;
+    return { url, error: url ? undefined : '未返回图片链接' };
+  } catch (err: unknown) {
+    return { url: null, error: `请求失败: ${(err as Error).message}` };
   }
 }

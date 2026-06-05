@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import { BorderRadius, Colors, Spacing } from '../theme/designTokens';
 
 type SplashScreenProps = {
@@ -67,9 +67,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
         ]}
       >
         {/* Logo mark */}
-        <View style={styles.logoMark}>
-          <Text style={styles.logoText}>TM</Text>
-        </View>
+        <Image source={require('../../icon/Group 776.png')} style={styles.logoIcon} />
 
         {/* App name */}
         <Text style={styles.appName}>TidyMind</Text>
@@ -101,20 +99,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.md,
   },
-  logoMark: {
-    width: 88,
-    height: 88,
-    borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.active,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: Colors.textOnDark,
-    letterSpacing: 2,
-  },
+  logoIcon: { width: 88, height: 88, borderRadius: 20 },
   appName: {
     fontSize: 32,
     fontWeight: '700',

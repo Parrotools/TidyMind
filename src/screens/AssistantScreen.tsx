@@ -82,7 +82,7 @@ export default function AssistantScreen() {
       scrollToBottom(); return;
     }
 
-    if (mode === 'generate') { const am = addChatMessage('assistant', '正在生成...'); await generateImage(trimmed, (t) => updateChatMessage(am.id, t)); scrollToBottom(); return; }
+    if (mode === 'generate') { addChatMessage('user', `🎨 ${trimmed}`); const am = addChatMessage('assistant', '正在生成图片（约需 10-30 秒）...'); try { const result = await generateImage(trimmed, (t) => updateChatMessage(am.id, t)); if (result.imageUrl) { upsertNote({ title: `🎨 ${trimmed.slice(0,20)}`, content: `![AI生成图片](${result.imageUrl})\n\n绘图提示词: ${result.prompt}`, tag: 'AI绘图' }); } } catch(e: unknown) { updateChatMessage(am.id, `[错误] ${(e as Error).message}`); } scrollToBottom(); return; }
     if (mode === 'rag' && notes.length > 0) { addChatMessage('user', `📚 ${trimmed}`); const am = addChatMessage('assistant', '正在检索...');
       try { const r = await ragSearch(trimmed, notes); updateChatMessage(am.id, `${r.answer}\n\n---\n📖 ${r.sources.map(s => `《${s.title}》`).join(' | ')}`); } catch (e: unknown) { updateChatMessage(am.id, `[错误] ${(e as Error).message}`); }
       scrollToBottom(); return;
@@ -181,7 +181,7 @@ export default function AssistantScreen() {
         {/* Empty state: welcome + prompts */}
         {chatMessages.length === 0 && (
           <View style={styles.welcome}>
-            <Text style={styles.welcomeIcon}>{currentMode.icon}</Text>
+            <Image source={require('../../icon/Group 776.png')} style={styles.welcomeIcon} />
             <Text style={styles.welcomeTitle}>{currentMode.label}模式</Text>
             <Text style={styles.welcomeDesc}>
               {mode === 'note' ? '输入主题，AI 生成结构化笔记' : mode === 'translate' ? '中英日韩互译' : mode === 'generate' ? '描述画面，AI 生成图片' : '输入问题或上传文件，AI 助你整理知识'}
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: Spacing.lg },
   // Welcome
   welcome: { alignItems: 'center', paddingTop: Spacing.xxxl, paddingBottom: Spacing.xl },
-  welcomeIcon: { fontSize: 48, marginBottom: Spacing.lg },
+  welcomeIcon: { width: 56, height: 56, borderRadius: 14, marginBottom: Spacing.lg },
   welcomeTitle: { fontSize: 22, fontWeight: '500', color: Colors.textPrimary, marginBottom: Spacing.sm },
   welcomeDesc: { fontSize: 15, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: Spacing.xl },
   promptRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Spacing.sm },

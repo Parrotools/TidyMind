@@ -1,276 +1,94 @@
 import React, { useMemo, useState } from 'react';
-import {
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/types';
 import { useAppState } from '../state/AppState';
-import {
-  notesToMarkdown,
-  copyToClipboard,
-  shareMarkdown,
-} from '../services/exportMarkdown';
+import { exportNoteToPdf } from '../services/exportPdf';
 import { BorderRadius, Colors, Spacing } from '../theme/designTokens';
 
-const FORMATS = ['Markdown'] as const;
-
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ExportScreen() {
-  const navigation = useNavigation<NavigationProp>();
+  const nav = useNavigation<Nav>();
   const { notes } = useAppState();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [format] = useState<string>(FORMATS[0]);
+  const [exporting, setExporting] = useState(false);
 
-  const sortedNotes = useMemo(
-    () => [...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    [notes],
-  );
+  const sorted = useMemo(() => [...notes].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)), [notes]);
+  const selected = useMemo(() => sorted.filter(n=>selectedIds.includes(n.id)), [sorted, selectedIds]);
+  const toggle = (id:string) => setSelectedIds(p=>p.includes(id)?p.filter(i=>i!==id):[...p,id]);
 
-  const selectedNotes = useMemo(
-    () => sortedNotes.filter(n => selectedIds.includes(n.id)),
-    [sortedNotes, selectedIds],
-  );
-
-  const preview = useMemo(
-    () => notesToMarkdown(selectedNotes),
-    [selectedNotes],
-  );
-
-  const toggleSelection = (noteId: string) => {
-    setSelectedIds(current =>
-      current.includes(noteId)
-        ? current.filter(id => id !== noteId)
-        : [...current, noteId],
-    );
-  };
-
-  const handleCopy = () => {
-    if (!selectedIds.length) {
-      Alert.alert('未选择笔记', '请至少选择一篇笔记进行导出。');
-      return;
+  const handleExport = async () => {
+    if (!selected.length) { Alert.alert('未选择笔记','请至少选择一篇笔记'); return; }
+    setExporting(true);
+    try {
+      for (const note of selected) {
+        const url = await exportNoteToPdf(note);
+        if (url) await Linking.openURL(url);
+      }
+      Alert.alert('导出完成', `已导出 ${selected.length} 篇笔记`);
+    } catch (err: unknown) {
+      Alert.alert('导出失败', (err as Error).message || '请确认后端服务已启动');
     }
-    copyToClipboard(preview);
-    Alert.alert('已复制', `已将 ${selectedIds.length} 篇笔记的 Markdown 复制到剪贴板。`);
-  };
-
-  const handleShare = async () => {
-    if (!selectedIds.length) {
-      Alert.alert('未选择笔记', '请至少选择一篇笔记进行导出。');
-      return;
-    }
-    await shareMarkdown(preview);
+    setExporting(false);
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <Pressable
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.backIcon}>‹</Text>
-          </Pressable>
-          <Text style={styles.title}>导出</Text>
-          <View style={styles.backButton} />
+    <SafeAreaView style={S.safe} edges={['top']}>
+      <View style={S.cont}>
+        <View style={S.head}>
+          <Pressable style={S.back} onPress={()=>nav.goBack()}><Text style={S.backT}>‹</Text></Pressable>
+          <Text style={S.title}>导出 PDF</Text>
+          <View style={S.back} />
         </View>
+        <Text style={S.sub}>勾选笔记后点击导出，PDF 将在浏览器中打开</Text>
 
-        <Text style={styles.subtitle}>选择笔记并导出为 {format} 格式</Text>
-
-        {/* Format indicator */}
-        <View style={styles.formatRow}>
-          {FORMATS.map(option => (
-            <View
-              key={option}
-              style={[
-                styles.formatChip,
-                option === format && styles.formatChipActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.formatText,
-                  option === format && styles.formatTextActive,
-                ]}
-              >
-                {option}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Note list */}
-        <ScrollView style={styles.noteList} showsVerticalScrollIndicator={false}>
-          {sortedNotes.map(note => {
-            const isSelected = selectedIds.includes(note.id);
+        <ScrollView style={S.list} showsVerticalScrollIndicator={false}>
+          {sorted.map(note=>{
+            const sel = selectedIds.includes(note.id);
             return (
-              <Pressable
-                key={note.id}
-                style={[styles.noteRow, isSelected && styles.noteRowSelected]}
-                onPress={() => toggleSelection(note.id)}
-              >
-                <View style={styles.noteInfo}>
-                  <Text style={styles.noteTitle} numberOfLines={1}>
-                    {note.title}
-                  </Text>
-                  <Text style={styles.noteMeta}>
-                    {note.tag || '无标签'}
-                  </Text>
+              <Pressable key={note.id} style={[S.row,sel&&S.rowSel]} onPress={()=>toggle(note.id)}>
+                <View style={S.info}>
+                  <Text style={S.nTitle} numberOfLines={1}>{note.title}</Text>
+                  <Text style={S.nMeta}>{note.tag||'无标签'} · {new Date(note.updatedAt).toLocaleDateString('zh-CN')}</Text>
                 </View>
-                <View
-                  style={[
-                    styles.checkbox,
-                    isSelected && styles.checkboxSelected,
-                  ]}
-                >
-                  {isSelected && <Text style={styles.checkmark}>✓</Text>}
-                </View>
+                <View style={[S.cb,sel&&S.cbSel]}>{sel&&<Text style={S.cbT}>✓</Text>}</View>
               </Pressable>
             );
           })}
         </ScrollView>
 
-        {/* Markdown Preview (当选中笔记时) */}
-        {selectedNotes.length > 0 && (
-          <View style={styles.previewSection}>
-            <Text style={styles.previewTitle}>
-              Markdown 预览（{selectedNotes.length} 篇）
-            </Text>
-            <ScrollView style={styles.previewBox} horizontal={false}>
-              <Text style={styles.previewText} selectable>
-                {preview}
-              </Text>
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Action buttons */}
-        <View style={styles.actionRow}>
-          <Pressable
-            style={[styles.actionButton, styles.copyButton]}
-            onPress={handleCopy}
-          >
-            <Text style={styles.actionButtonText}>复制</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.actionButton, styles.shareButton]}
-            onPress={handleShare}
-          >
-            <Text style={styles.actionButtonText}>分享</Text>
-          </Pressable>
-        </View>
+        <Pressable style={[S.btn,(exporting||!selected.length)&&S.btnOff]} onPress={handleExport} disabled={exporting||!selected.length}>
+          {exporting ? <ActivityIndicator size="small" color={Colors.onPrimary} /> :
+            <Text style={S.btnT}>导出 PDF ({selected.length})</Text>}
+        </Pressable>
+        <Text style={S.note}>需要先在电脑上启动后端服务：{'\n'}cd server && pip install -r requirements.txt && python main.py</Text>
       </View>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: Colors.background },
-  container: { flex: 1, paddingHorizontal: Spacing.lg },
-  headerRow: {
-    marginTop: Spacing.md,
-    marginBottom: Spacing.sm,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  backButton: {
-    width: 24,
-    height: 24,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: { fontSize: 20, color: Colors.textPrimary, lineHeight: 22 },
-  title: { fontSize: 20, fontWeight: '600', color: Colors.textPrimary },
-  subtitle: { fontSize: 12, color: Colors.textSecondary, marginBottom: Spacing.lg },
-  formatRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
-  formatChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.inactive,
-  },
-  formatChipActive: { backgroundColor: Colors.active },
-  formatText: { fontSize: 12, color: Colors.textOnDark, fontWeight: '500' },
-  formatTextActive: { color: Colors.textOnDark },
-  noteList: { maxHeight: '40%', marginBottom: Spacing.md },
-  noteRow: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  noteRowSelected: {
-    borderWidth: 2,
-    borderColor: Colors.active,
-  },
-  noteInfo: { flex: 1, marginRight: Spacing.md },
-  noteTitle: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
-  noteMeta: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    marginTop: Spacing.xs,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 2,
-    borderColor: Colors.inactive,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxSelected: {
-    borderColor: Colors.active,
-    backgroundColor: Colors.active,
-  },
-  checkmark: { color: Colors.textOnDark, fontSize: 14, fontWeight: '700' },
-  previewSection: { marginBottom: Spacing.md, flex: 1 },
-  previewTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-    marginBottom: Spacing.xs,
-  },
-  previewBox: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    maxHeight: 200,
-  },
-  previewText: {
-    fontSize: 11,
-    color: Colors.textPrimary,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    lineHeight: 16,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    paddingBottom: Spacing.xl,
-  },
-  actionButton: {
-    flex: 1,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-  },
-  copyButton: { backgroundColor: Colors.inactive },
-  shareButton: { backgroundColor: Colors.active },
-  actionButtonText: { color: Colors.textOnDark, fontWeight: '600', fontSize: 14 },
+const S = StyleSheet.create({
+  safe: { flex:1, backgroundColor:Colors.background },
+  cont: { flex:1, paddingHorizontal:Spacing.lg },
+  head: { flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginTop:Spacing.md,marginBottom:Spacing.sm },
+  back: { width:32,height:32,borderRadius:16,backgroundColor:Colors.surfaceContainer,alignItems:'center',justifyContent:'center' },
+  backT: { fontSize:22,color:Colors.textPrimary },
+  title: { fontSize:20,fontWeight:'500',color:Colors.textPrimary },
+  sub: { fontSize:13,color:Colors.textSecondary,marginBottom:Spacing.lg },
+  list: { flex:1 },
+  row: { flexDirection:'row',alignItems:'center',backgroundColor:Colors.surfaceContainer,borderRadius:BorderRadius.lg,padding:Spacing.md,marginBottom:Spacing.sm },
+  rowSel: { borderWidth:2,borderColor:Colors.primary },
+  info: { flex:1,marginRight:Spacing.md },
+  nTitle: { fontSize:15,fontWeight:'500',color:Colors.textPrimary },
+  nMeta: { fontSize:12,color:Colors.textSecondary,marginTop:2 },
+  cb: { width:24,height:24,borderRadius:8,borderWidth:2,borderColor:Colors.border,alignItems:'center',justifyContent:'center' },
+  cbSel: { borderColor:Colors.primary,backgroundColor:Colors.primary },
+  cbT: { fontSize:14,color:Colors.onPrimary,fontWeight:'700' },
+  btn: { backgroundColor:Colors.primary,borderRadius:BorderRadius.full,paddingVertical:14,alignItems:'center',marginTop:Spacing.md,marginBottom:Spacing.xs },
+  btnOff: { opacity:0.5 },
+  btnT: { color:Colors.onPrimary,fontWeight:'500',fontSize:16 },
+  note: { fontSize:11,color:Colors.textTertiary,textAlign:'center',marginBottom:Spacing.xl,lineHeight:16 },
 });

@@ -302,6 +302,7 @@ export default function FilesScreen() {
               note={item}
               onPress={handleOpenNote}
               onToggleFavorite={note => toggleFavorite(note.id)}
+              onLongPress={n => Alert.alert('删除笔记', `确定删除「${n.title}」？`, [{text:'取消',style:'cancel'},{text:'删除',style:'destructive',onPress:()=>deleteNote(n.id)}])}
             />
           )}
           contentContainerStyle={styles.listContent}

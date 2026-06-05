@@ -78,3 +78,7 @@ yarn-error.log
 /作品提交/产品原型设计图/
 /作品提交/演示demo.mp4
 /作品提交/产品策划文档.pptx
+
+# server
+server/exports/
+server/__pycache__/

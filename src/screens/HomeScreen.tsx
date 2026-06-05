@@ -1,8 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, Platform,
-  Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Alert, Animated, FlatList, Image, LayoutAnimation, Platform,
+  Pressable, ScrollView, StyleSheet, Text, TextInput, UIManager, View,
 } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,6 +38,25 @@ export default function HomeScreen() {
   const [editing, setEditing] = useState<Note | null>(null);
   const [tag, setTag] = useState<string | null>(null);
 
+  // Fade-in on mount
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const fabScale = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    Animated.spring(fabScale, { toValue: 1, tension: 200, friction: 15, useNativeDriver: true }).start();
+  }, [fadeAnim, fabScale]);
+
+  // Tag switch animation
+  const handleTagSwitch = (t: string | null) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setTag(p => p === t ? null : t);
+  };
+
+  const featured = useMemo(() => {
+    if (notes.length === 0) return null;
+    return notes[Math.floor(Math.random() * notes.length)];
+  }, [notes]);
+
   const tagCounts = useMemo(() => {
     const m: Record<string,number> = {};
     notes.forEach(n => { if(n.tag) m[n.tag] = (m[n.tag]??0)+1; });
@@ -56,6 +79,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={S.safe} edges={['top']}>
+      <Animated.View style={{ flex:1, opacity: fadeAnim }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={S.scroll}>
         {/* ── Header ── */}
         <View style={S.head}>
@@ -67,17 +91,6 @@ export default function HomeScreen() {
             <Text style={S.avText}>TM</Text>
           </Pressable>
         </View>
-
-        {/* ── AI Hero ── */}
-        <Pressable style={S.hero} onPress={()=>nav.navigate('Assistant')}>
-          <View style={S.heroGlow} />
-          <Text style={S.heroEmoji}>✨</Text>
-          <View style={S.heroContent}>
-            <Text style={S.heroTitle}>AI 知识助手</Text>
-            <Text style={S.heroDesc}>上传文件或输入主题，自动整理为结构化笔记</Text>
-          </View>
-          <View style={S.heroArrow}><Text style={S.heroArrowText}>→</Text></View>
-        </Pressable>
 
         {/* ── Search ── */}
         <View style={S.searchRow}>
@@ -98,12 +111,40 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {/* ── AI Hero ── */}
+        {mode === 'idle' && (
+          <Pressable style={S.hero} onPress={()=>nav.navigate('Assistant')}>
+            <View style={S.heroGlow} />
+            <Image source={require('../../icon/Group 776.png')} style={S.heroIcon} />
+            <View style={S.heroContent}>
+              <Text style={S.heroTitle}>AI 知识助手</Text>
+              <Text style={S.heroDesc}>上传文件或输入主题，自动整理为结构化笔记</Text>
+            </View>
+            <View style={S.heroArrow}><Text style={S.heroArrowText}>→</Text></View>
+          </Pressable>
+        )}
+
+        {/* ── Featured Note ── */}
+        {featured && mode === 'idle' && (
+          <Pressable style={S.featured} onPress={() => nav.navigate('NoteDetail', { noteId: featured.id })}>
+            <Text style={S.featLabel}>📌 推荐阅读</Text>
+            <Text style={S.featTitle} numberOfLines={2}>{featured.title}</Text>
+            <Text style={S.featPreview} numberOfLines={3}>
+              {featured.content.replace(/[#*>`\-\[\]!()|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) || '暂无内容'}
+            </Text>
+            <View style={S.featFoot}>
+              {featured.tag ? <View style={S.featTag}><Text style={S.featTagT}>{featured.tag}</Text></View> : null}
+              <Text style={S.featTime}>{new Date(featured.updatedAt).toLocaleDateString('zh-CN')}</Text>
+            </View>
+          </Pressable>
+        )}
+
         {/* ── Tags ── */}
         {mode!=='ai'&&tagCounts.length>0&&(
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={S.tagRow}>
-            <Pressable style={[S.chip,!tag&&S.chipOn]} onPress={()=>setTag(null)}><Text style={[S.chipT,!tag&&S.chipTOn]}>全部</Text></Pressable>
+            <Pressable style={[S.chip,!tag&&S.chipOn]} onPress={()=>handleTagSwitch(null)}><Text style={[S.chipT,!tag&&S.chipTOn]}>全部</Text></Pressable>
             {tagCounts.map(([t])=>(
-              <Pressable key={t} style={[S.chip,tag===t&&S.chipOn]} onPress={()=>setTag(p=>p===t?null:t)}><Text style={[S.chipT,tag===t&&S.chipTOn]}>{t}</Text></Pressable>
+              <Pressable key={t} style={[S.chip,tag===t&&S.chipOn]} onPress={()=>handleTagSwitch(t)}><Text style={[S.chipT,tag===t&&S.chipTOn]}>{t}</Text></Pressable>
             ))}
           </ScrollView>
         )}
@@ -115,7 +156,15 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Notes Grid ── */}
-        {isLoading?<ActivityIndicator size="small" color={Colors.primary} style={{marginTop:40}}/>:
+        {isLoading?(
+          <View style={S.skelGrid}>
+            {[1,2,3,4].map(i=>(
+              <View key={i} style={S.skelCard}>
+                <View style={S.skelLine1} /><View style={S.skelLine2} /><View style={S.skelLine3} />
+              </View>
+            ))}
+          </View>
+        ):
          list.length===0?(
           <View style={S.empty}>
             <Text style={S.emptyIcon}>{q?'🔍':'📝'}</Text>
@@ -124,14 +173,21 @@ export default function HomeScreen() {
         ):(
           <FlatList data={list} keyExtractor={i=>i.id} numColumns={2} key="grid-2col"
             columnWrapperStyle={{gap:12}} scrollEnabled={false}
-            renderItem={({item})=><NoteCard note={item} onPress={n=>nav.navigate('NoteDetail',{noteId:n.id})} onToggleFavorite={n=>toggleFavorite(n.id)}/>} />
+            renderItem={({item})=><NoteCard note={item}
+              onPress={n=>nav.navigate('NoteDetail',{noteId:n.id})}
+              onToggleFavorite={n=>toggleFavorite(n.id)}
+              onLongPress={n=>Alert.alert('删除笔记','确定删除「'+n.title+'」？',[{text:'取消',style:'cancel'},{text:'删除',style:'destructive',onPress:()=>deleteNote(n.id)}])}
+            />} />
         )}
       </ScrollView>
+      </Animated.View>
 
       {/* ── FAB ── */}
-      <Pressable style={S.fab} onPress={()=>nav.navigate('Assistant')}>
-        <Text style={S.fabIcon}>✨</Text>
-      </Pressable>
+      <Animated.View style={{ position:'absolute',bottom:28,right:20, transform:[{scale:fabScale}] }}>
+        <Pressable onPress={()=>nav.navigate('Assistant')}>
+          <Image source={require('../../icon/Group 776.png')} style={S.fabIcon} />
+        </Pressable>
+      </Animated.View>
 
       <NoteEditorModal visible={editor} initialNote={editing} onCancel={()=>setEditor(false)} onSave={hSave} onDelete={id=>{deleteNote(id);setEditor(false);}}/>
     </SafeAreaView>
@@ -156,7 +212,7 @@ const S = StyleSheet.create({
     ...Shadows.md,
   },
   heroGlow: { position:'absolute',top:-30,right:-20,width:120,height:120,borderRadius:60,backgroundColor:'rgba(103,80,164,0.15)' },
-  heroEmoji: { fontSize:32,marginRight:14 },
+  heroIcon: { width:36,height:36,marginRight:14,borderRadius:8 },
   heroContent: { flex:1 },
   heroTitle: { fontSize:17,fontWeight:'500',color:Colors.onPrimaryContainer },
   heroDesc: { fontSize:13,color:Colors.onPrimaryContainer,opacity:0.7,lineHeight:18,marginTop:4 },
@@ -171,6 +227,20 @@ const S = StyleSheet.create({
   aiBar: { flexDirection:'row',alignItems:'center',backgroundColor:Colors.primaryContainer,borderRadius:14,padding:12,marginBottom:16,gap:8 },
   aiBarText: { flex:1,fontSize:13,color:Colors.onPrimaryContainer,lineHeight:18 },
   aiBarBack: { fontSize:13,fontWeight:'600',color:Colors.onPrimaryContainer },
+  // Featured
+  featured: {
+    backgroundColor: Colors.surfaceContainer,
+    borderRadius: 20, padding: 20, marginBottom: 20,
+    ...Shadows.md,
+  },
+  featLabel: { fontSize: 12, fontWeight: '600', color: Colors.primary, marginBottom: 10, letterSpacing: 0.5 },
+  featTitle: { fontSize: 20, fontWeight: '500', color: Colors.textPrimary, lineHeight: 26, marginBottom: 8 },
+  featPreview: { fontSize: 14, lineHeight: 22, color: Colors.textSecondary, marginBottom: 12 },
+  featFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  featTag: { backgroundColor: Colors.primaryContainer, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
+  featTagT: { fontSize: 12, color: Colors.onPrimaryContainer, fontWeight: '500' },
+  featTime: { fontSize: 12, color: Colors.textTertiary },
+
   // Tags
   tagRow: { marginBottom:20 },
   chip: { paddingHorizontal:14,paddingVertical:8,borderRadius:20,backgroundColor:Colors.surfaceContainer,marginRight:8 },
@@ -185,13 +255,15 @@ const S = StyleSheet.create({
   empty: { alignItems:'center',paddingVertical:60 },
   emptyIcon: { fontSize:40,marginBottom:12 },
   emptyTitle: { fontSize:16,color:Colors.textSecondary },
+  // Skeleton
+  skelGrid: { flexDirection:'row',flexWrap:'wrap',gap:12 },
+  skelCard: { width:'48%',backgroundColor:'#FFFFFF',borderRadius:16,padding:14,marginBottom:12,height:160,gap:10 },
+  skelLine1: { height:16,backgroundColor:Colors.surfaceContainerLow,borderRadius:8,width:'80%' },
+  skelLine2: { height:12,backgroundColor:Colors.surfaceContainerLow,borderRadius:6,width:'100%' },
+  skelLine3: { height:12,backgroundColor:Colors.surfaceContainerLow,borderRadius:6,width:'50%' },
+
   // FAB
-  fab: {
-    position:'absolute',bottom:24,right:20,
-    width:56,height:56,borderRadius:28,
-    backgroundColor:Colors.primary,
-    alignItems:'center',justifyContent:'center',
-    ...Platform.select({ios:{shadowColor:'#6750A4',shadowOpacity:0.35,shadowRadius:12,shadowOffset:{width:0,height:4}},android:{elevation:8}}),
+  fabIcon: { width:52,height:52,borderRadius:12,
+    ...Platform.select({ios:{shadowColor:'#6750A4',shadowOpacity:0.3,shadowRadius:10,shadowOffset:{width:0,height:4}},android:{elevation:6}}),
   },
-  fabIcon: { fontSize:22 },
 });
