@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -46,6 +47,17 @@ export default function HomeScreen() {
   const [query, setQuery] = useState('');
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
+  // ── 标签统计与筛选 ──────────────────────────────────────────────────
+
+  const tagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    notes.forEach(n => {
+      if (n.tag) counts[n.tag] = (counts[n.tag] ?? 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [notes]);
 
   // ── 搜索结果 ──────────────────────────────────────────────────────
 
@@ -55,17 +67,20 @@ export default function HomeScreen() {
   }, [query, notes, searchLocal]);
 
   const filteredNotes = useMemo(() => {
-    const sorted = [...notes].sort(
+    let base = [...notes].sort(
       (a, b) => b.updatedAt.localeCompare(a.updatedAt),
     );
     if (mode === 'ai') {
-      return aiResults.map(r => r.note);
+      base = aiResults.map(r => r.note);
+    } else if (mode === 'keyword') {
+      base = localResults;
     }
-    if (mode === 'keyword') {
-      return localResults;
+    // 标签筛选
+    if (selectedTag) {
+      base = base.filter(n => n.tag === selectedTag);
     }
-    return sorted;
-  }, [notes, mode, aiResults, localResults]);
+    return base;
+  }, [notes, mode, aiResults, localResults, selectedTag]);
 
   // ── 统计 ──────────────────────────────────────────────────────────
 
@@ -105,16 +120,15 @@ export default function HomeScreen() {
     setEditorVisible(true);
   };
 
-  const handleOpenEdit = (note: Note) => {
-    setEditingNote(note);
-    setEditorVisible(true);
+  const handleOpenNote = (note: Note) => {
+    navigation.navigate('NoteDetail', { noteId: note.id });
   };
 
   const handleSave = (payload: {
     id?: string;
     title: string;
     content: string;
-    tags: string[];
+    tag: string;
   }) => {
     if (!payload.title) {
       Alert.alert('缺少标题', '请在保存前添加标题。');
@@ -256,14 +270,65 @@ export default function HomeScreen() {
           </>
         )}
 
+        {/* Tag filter bar */}
+        {mode !== 'ai' && tagCounts.length > 0 && (
+          <View style={styles.tagFilterWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagFilterInner}
+            >
+              <Pressable
+                style={[
+                  styles.tagFilterChip,
+                  !selectedTag && styles.tagFilterChipActive,
+                ]}
+                onPress={() => setSelectedTag(null)}
+              >
+                <Text
+                  style={[
+                    styles.tagFilterText,
+                    !selectedTag && styles.tagFilterTextActive,
+                  ]}
+                >
+                  全部 ({notes.length})
+                </Text>
+              </Pressable>
+              {tagCounts.map(([tag, count]) => (
+                <Pressable
+                  key={tag}
+                  style={[
+                    styles.tagFilterChip,
+                    selectedTag === tag && styles.tagFilterChipActive,
+                  ]}
+                  onPress={() =>
+                    setSelectedTag(prev => (prev === tag ? null : tag))
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.tagFilterText,
+                      selectedTag === tag && styles.tagFilterTextActive,
+                    ]}
+                  >
+                    {tag} ({count})
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         {/* Section header */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>
-            {mode === 'ai'
-              ? `AI 搜索结果 (${filteredNotes.length})`
-              : mode === 'keyword'
-                ? `匹配笔记 (${filteredNotes.length})`
-                : '最近笔记'}
+            {selectedTag
+              ? `「${selectedTag}」(${filteredNotes.length})`
+              : mode === 'ai'
+                ? `AI 搜索结果 (${filteredNotes.length})`
+                : mode === 'keyword'
+                  ? `匹配笔记 (${filteredNotes.length})`
+                  : '最近笔记'}
           </Text>
           {mode === 'idle' && (
             <Pressable onPress={handleOpenNew}>
@@ -284,7 +349,7 @@ export default function HomeScreen() {
             renderItem={({ item }) => (
               <NoteCard
                 note={item}
-                onPress={handleOpenEdit}
+                onPress={handleOpenNote}
                 onToggleFavorite={note => toggleFavorite(note.id)}
               />
             )}
@@ -437,8 +502,39 @@ const styles = StyleSheet.create({
   quickRow: {
     flexDirection: 'row',
     gap: Spacing.md,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.md,
   },
+
+  // Tag filter
+  tagFilterWrap: {
+    marginBottom: Spacing.lg,
+  },
+  tagFilterInner: {
+    gap: Spacing.sm,
+    paddingRight: Spacing.lg,
+  },
+  tagFilterChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  tagFilterChipActive: {
+    backgroundColor: Colors.active,
+    borderColor: Colors.active,
+  },
+  tagFilterText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  tagFilterTextActive: {
+    color: Colors.textOnDark,
+  },
+
+  // Quick actions (original)
   quickAction: {
     flex: 1,
     paddingVertical: Spacing.md,

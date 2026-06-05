@@ -117,7 +117,7 @@ export async function analyzeImage(
 export async function structureOCRToNote(ocrText: string): Promise<{
   title: string;
   content: string;
-  tags: string[];
+  tag: string;
 }> {
   const response = await callLLM({
     model: DEFAULT_MODEL,
@@ -135,13 +135,13 @@ export async function structureOCRToNote(ocrText: string): Promise<{
     return {
       title: parsed.title ?? '未命名笔记',
       content: parsed.content ?? ocrText,
-      tags: parsed.tags ?? [],
+      tag: parsed.tags?.[0] ?? parsed.tag ?? 'OCR',
     };
   } catch {
     return {
       title: 'OCR 识别笔记',
       content: ocrText,
-      tags: ['OCR'],
+      tag: 'OCR',
     };
   }
 }

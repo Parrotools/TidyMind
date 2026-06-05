@@ -63,7 +63,7 @@ export function usePhotoToNote(onSuccess?: (noteId: string) => void) {
         id: noteId,
         title: structured.title,
         content: structured.content,
-        tags: structured.tags,
+        tag: structured.tag || 'OCR',
       });
 
       setIsProcessing(false);
@@ -111,7 +111,7 @@ export function usePhotoToNote(onSuccess?: (noteId: string) => void) {
       upsertNote({
         title: structured.title,
         content: structured.content,
-        tags: structured.tags,
+        tag: structured.tag || 'OCR',
       });
 
       setIsProcessing(false);

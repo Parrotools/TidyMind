@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -28,7 +28,7 @@ type NoteEditorModalProps = {
     id?: string;
     title: string;
     content: string;
-    tags: string[];
+    tag: string;
     location?: NoteLocation;
     images?: string[];
   }) => void;
@@ -57,7 +57,7 @@ export default function NoteEditorModal({
     }
     setTitle(initialNote?.title ?? '');
     setContent(initialNote?.content ?? '');
-    setTagsInput(initialNote?.tags.join(', ') ?? '');
+    setTagsInput(initialNote?.tag ?? '');
     setSelectedLocation(initialNote?.location);
     setLocQuery(initialNote?.location?.name ?? '');
     setImages(initialNote?.images ?? []);
@@ -65,15 +65,6 @@ export default function NoteEditorModal({
   }, [visible, initialNote]);
 
   const isEditing = Boolean(initialNote?.id);
-
-  const parsedTags = useMemo(
-    () =>
-      tagsInput
-        .split(',')
-        .map(tag => tag.trim())
-        .filter(Boolean),
-    [tagsInput],
-  );
 
   const handleLocSearch = async () => {
     if (!locQuery.trim()) return;
@@ -97,17 +88,16 @@ export default function NoteEditorModal({
       const response = await callLLM({
         model: DEFAULT_MODEL,
         messages: [
-          { role: 'system', content: '根据标题和内容推荐3-5个标签。返回JSON: {"tags":["标签1","标签2"]}。标签2-4字，中文。' },
+          { role: 'system', content: '根据标题和内容推荐1个最合适的标签。返回JSON: {"tag":"标签名"}。标签2-4字，中文。' },
           { role: 'user', content: `标题: ${title}\n内容: ${content.slice(0, 500)}` },
         ],
         stream: false,
         temperature: 0.5,
-        maxTokens: 200,
+        maxTokens: 100,
       });
       const parsed = JSON.parse(response);
-      const newTags = (parsed.tags ?? []).filter((t: string) => !parsedTags.includes(t));
-      if (newTags.length > 0) {
-        setTagsInput(prev => (prev.trim() ? `${prev}, ${newTags.join(', ')}` : newTags.join(', ')));
+      if (parsed.tag && !tagsInput.trim()) {
+        setTagsInput(parsed.tag);
       }
     } catch {}
     setTagSuggesting(false);
@@ -184,7 +174,7 @@ export default function NoteEditorModal({
             </View>
             <TextInput
               style={styles.input}
-              placeholder="以逗号分隔的标签"
+              placeholder="输入一个标签"
               placeholderTextColor={Colors.textTertiary}
               value={tagsInput}
               onChangeText={setTagsInput}
@@ -289,7 +279,7 @@ export default function NoteEditorModal({
                   id: initialNote?.id,
                   title: title.trim(),
                   content: content.trim(),
-                  tags: parsedTags,
+                  tag: tagsInput.trim(),
                   location: selectedLocation,
                   images: images.length > 0 ? images : undefined,
                 })

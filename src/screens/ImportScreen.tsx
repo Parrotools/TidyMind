@@ -28,17 +28,8 @@ export default function ImportScreen() {
   const [importType, setImportType] = useState<string>(IMPORT_TYPES[0]);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [tags, setTags] = useState('');
+  const [tag, setTag] = useState('');
   const [isParsing, setIsParsing] = useState(false);
-
-  const parsedTags = useMemo(
-    () =>
-      tags
-        .split(',')
-        .map(tag => tag.trim())
-        .filter(Boolean),
-    [tags],
-  );
 
   const handleImport = () => {
     if (!title.trim()) {
@@ -49,7 +40,7 @@ export default function ImportScreen() {
     upsertNote({
       title: title.trim(),
       content: content.trim() || `${importType} 导入就绪。`,
-      tags: parsedTags,
+      tag: tag.trim(),
     });
 
     navigation.goBack();
@@ -76,7 +67,7 @@ export default function ImportScreen() {
 
       const parsed = JSON.parse(response);
       setTitle(parsed.title ?? title);
-      setTags(parsed.tags?.join(', ') ?? tags);
+      setTag((parsed.tags?.[0] ?? parsed.tag ?? tag) as string);
       setContent(parsed.summary ?? content);
     } catch {
       Alert.alert('AI 解析失败', '请检查网络连接后重试。');
@@ -139,8 +130,8 @@ export default function ImportScreen() {
           style={styles.input}
           placeholder="以逗号分隔的标签"
           placeholderTextColor={Colors.textTertiary}
-          value={tags}
-          onChangeText={setTags}
+          value={tag}
+          onChangeText={setTag}
         />
 
         {/* Content + AI Parse */}

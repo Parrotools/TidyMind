@@ -124,7 +124,7 @@ export default function ExportScreen() {
                     {note.title}
                   </Text>
                   <Text style={styles.noteMeta}>
-                    {note.tags.join(', ') || '无标签'}
+                    {note.tag || '无标签'}
                   </Text>
                 </View>
                 <View

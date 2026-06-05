@@ -23,7 +23,7 @@ export default function NotesScreen() {
 
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
-    notes.forEach(note => note.tags.forEach(tag => tags.add(tag)));
+    notes.forEach(note => { if (note.tag) tags.add(note.tag); });
     return Array.from(tags).sort((a, b) => a.localeCompare(b));
   }, [notes]);
 
@@ -31,13 +31,13 @@ export default function NotesScreen() {
     const normalized = query.trim().toLowerCase();
     return notes
       .filter(note => {
-        if (activeTag && !note.tags.includes(activeTag)) {
+        if (activeTag && note.tag !== activeTag) {
           return false;
         }
         if (!normalized) {
           return true;
         }
-        const haystack = `${note.title} ${note.content} ${note.tags.join(' ')}`.toLowerCase();
+        const haystack = `${note.title} ${note.content} ${note.tag || ''}`.toLowerCase();
         return haystack.includes(normalized);
       })
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -57,7 +57,7 @@ export default function NotesScreen() {
     id?: string;
     title: string;
     content: string;
-    tags: string[];
+    tag: string;
   }) => {
     if (!payload.title) {
       Alert.alert('Missing title', 'Please add a title before saving.');
@@ -95,7 +95,7 @@ export default function NotesScreen() {
         <View style={styles.searchCard}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by title, content, or tags"
+            placeholder="Search by title, content, or tag"
             value={query}
             onChangeText={setQuery}
           />

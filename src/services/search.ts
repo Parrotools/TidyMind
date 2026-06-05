@@ -42,7 +42,7 @@ export async function semanticSearch(
   const notesText = notes
     .map(
       (n, i) =>
-        `[${i}] 标题:${n.title} | 标签:${n.tags.join(',')} | 内容:${n.content.slice(0, 300)}`,
+        `[${i}] 标题:${n.title} | 标签:${n.tag || ''} | 内容:${n.content.slice(0, 300)}`,
     )
     .join('\n---\n');
 
@@ -108,7 +108,7 @@ export async function buildNoteIndex(notes: Note[]): Promise<void> {
   if (uncached.length === 0) return;
 
   const texts = uncached.map(
-    n => `${n.title}\n${n.tags.join(' ')}\n${n.content.slice(0, 400)}`,
+    n => `${n.title}\n${n.tag || ''}\n${n.content.slice(0, 400)}`,
   );
 
   try {
@@ -181,7 +181,7 @@ export async function ragSearch(
   const context = topK
     .map(
       (n, i) =>
-        `[笔记${i + 1}] 标题: ${n.title}\n标签: ${n.tags.join(', ')}\n内容: ${n.content}`,
+        `[笔记${i + 1}] 标题: ${n.title}\n标签: ${n.tag || ''}\n内容: ${n.content}`,
     )
     .join('\n\n---\n\n');
 
@@ -236,7 +236,7 @@ export function keywordSearch(query: string, notes: Note[]): Note[] {
 
   return notes.filter(note => {
     const haystack =
-      `${note.title} ${note.content} ${note.tags.join(' ')}`.toLowerCase();
+      `${note.title} ${note.content} ${note.tag || ''}`.toLowerCase();
     return haystack.includes(normalized);
   });
 }

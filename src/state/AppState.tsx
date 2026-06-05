@@ -8,9 +8,12 @@ type UpsertNoteInput = {
   id?: string;
   title: string;
   content: string;
-  tags: string[];
+  tag: string;
   location?: import('../types/note').NoteLocation;
   images?: string[];
+  blocks?: import('../types/note').NoteBlock[];
+  summary?: string;
+  keyPoints?: string[];
 };
 
 type AppStateContextValue = {
@@ -85,9 +88,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
                 ...note,
                 title: payload.title,
                 content: payload.content,
-                tags: payload.tags,
+                tag: payload.tag,
                 location: payload.location,
                 images: payload.images ?? note.images,
+                blocks: payload.blocks ?? note.blocks,
+                summary: payload.summary ?? note.summary,
+                keyPoints: payload.keyPoints ?? note.keyPoints,
                 updatedAt: now,
               }
             : note,
@@ -99,9 +105,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           id: createId(),
           title: payload.title,
           content: payload.content,
-          tags: payload.tags,
+          tag: payload.tag,
           location: payload.location,
           images: payload.images,
+          blocks: payload.blocks,
+          summary: payload.summary,
+          keyPoints: payload.keyPoints,
           createdAt: now,
           updatedAt: now,
           isFavorite: false,

@@ -32,6 +32,7 @@ import ImportScreen from './src/screens/ImportScreen';
 import FilesScreen from './src/screens/FilesScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import NoteDetailScreen from './src/screens/NoteDetailScreen';
 import { AppStateProvider } from './src/state/AppState';
 import { BorderRadius, Colors, Spacing } from './src/theme/designTokens';
 import { setLLMAppKey } from './src/services/llm.config';
@@ -78,33 +79,36 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const tabCount = state.routes.length;
   const pillLeft = useRef(new Animated.Value(0)).current;
 
-  // Measure the row once so we can divide it into equal slices.
-  // This guarantees the pill position is consistent regardless of
-  // individual tab content widths (which change active ↔ inactive).
+  // 首次布局时直接贴紧胶囊到初始位置（无动画），后续切换做弹簧动画。
+  // 由于每个 Tab flex: 1 严格等宽，sliceW 计算与各 Tab 中心精确对齐。
   const handleRowLayout = useCallback((e: LayoutChangeEvent) => {
-    rowWidthRef.current = e.nativeEvent.layout.width;
-  }, []);
-
-  useEffect(() => {
-    if (rowWidthRef.current === 0) {
-      return;
-    }
-
-    // 每个 Tab 占据等宽的水平切片，胶囊居中
-    const sliceW = rowWidthRef.current / tabCount;
-    const targetLeft = sliceW * activeIndex + sliceW / 2 - FIXED_PILL_WIDTH / 2;
+    const width = e.nativeEvent.layout.width;
+    rowWidthRef.current = width;
 
     if (!didInitialSnap.current) {
+      const sliceW = width / state.routes.length;
+      const targetLeft =
+        sliceW * state.index + sliceW / 2 - FIXED_PILL_WIDTH / 2;
       pillLeft.setValue(targetLeft);
       didInitialSnap.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pillLeft]);
+
+  useEffect(() => {
+    if (!didInitialSnap.current || rowWidthRef.current === 0) {
       return;
     }
+
+    const sliceW = rowWidthRef.current / tabCount;
+    const targetLeft =
+      sliceW * activeIndex + sliceW / 2 - FIXED_PILL_WIDTH / 2;
 
     Animated.spring(pillLeft, {
       toValue: targetLeft,
-      tension: 60,
-      friction: 8,
-      useNativeDriver: false,
+      tension: 200,
+      friction: 15,
+      useNativeDriver: true,
     }).start();
   }, [activeIndex, pillLeft, tabCount]);
 
@@ -198,7 +202,6 @@ const tabStyles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.sm,
@@ -215,8 +218,8 @@ const tabStyles = StyleSheet.create({
   tab: {
     alignItems: 'center',
     justifyContent: 'center',
+    flex: 1,
     minHeight: TAB_MIN_HEIGHT,
-    minWidth: 64,
     zIndex: 1,
   },
   activeContent: {
@@ -291,6 +294,7 @@ function App() {
               <RootStack.Screen name="Import" component={ImportScreen} />
               <RootStack.Screen name="Export" component={ExportScreen} />
               <RootStack.Screen name="Settings" component={SettingsScreen} />
+              <RootStack.Screen name="NoteDetail" component={NoteDetailScreen} />
             </RootStack.Navigator>
           </NavigationContainer>
         </AppStateProvider>

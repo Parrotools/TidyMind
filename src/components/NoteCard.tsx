@@ -72,15 +72,13 @@ export default function NoteCard({ note, onPress, onToggleFavorite }: NoteCardPr
       {/* Bottom row: date + tags */}
       <View style={styles.bottomRow}>
         <Text style={styles.date}>{formatDate(note.updatedAt)}</Text>
-        {note.tags.length > 0 && (
+        {note.tag ? (
           <View style={styles.tagsRow}>
-            {note.tags.slice(0, 2).map(tag => (
-              <View key={`${note.id}-${tag}`} style={styles.tagPill}>
-                <Text style={styles.tagText}>{tag}</Text>
-              </View>
-            ))}
+            <View style={styles.tagPill}>
+              <Text style={styles.tagText}>{note.tag}</Text>
+            </View>
           </View>
-        )}
+        ) : null}
       </View>
     </Pressable>
   );

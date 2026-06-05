@@ -17,12 +17,18 @@ import NoteEditorModal from '../components/NoteEditorModal';
 import { useSemanticSearch } from '../hooks/useSemanticSearch';
 import { usePhotoToNote } from '../hooks/usePhotoToNote';
 import { useAppState } from '../state/AppState';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
+import { RootStackParamList } from '../navigation/types';
 import { BorderRadius, Colors, Spacing } from '../theme/designTokens';
 import { Note } from '../types/note';
+
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 const FILE_TYPE_TABS = ['全部', '文字', '链接', '视频/照片', '录音'] as const;
 
 export default function FilesScreen() {
+  const navigation = useNavigation<NavProp>();
   const { notes, upsertNote, deleteNote, toggleFavorite } = useAppState();
   const {
     mode,
@@ -48,7 +54,7 @@ export default function FilesScreen() {
 
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
-    notes.forEach(note => note.tags.forEach(tag => tags.add(tag)));
+    notes.forEach(note => { if (note.tag) tags.add(note.tag); });
     return Array.from(tags).sort((a, b) => a.localeCompare(b));
   }, [notes]);
 
@@ -68,7 +74,7 @@ export default function FilesScreen() {
       '录音': 'audio',
     };
     const tag = typeTagMap[activeType];
-    return tag ? notes.filter(n => n.tags.includes(tag)) : notes;
+    return tag ? notes.filter(n => n.tag === tag) : notes;
   }, [notes, activeType]);
 
   const filteredNotes = useMemo(() => {
@@ -107,15 +113,14 @@ export default function FilesScreen() {
     setEditingNote(null);
     setEditorVisible(true);
   };
-  const handleOpenEdit = (note: Note) => {
-    setEditingNote(note);
-    setEditorVisible(true);
+  const handleOpenNote = (note: Note) => {
+    navigation.navigate('NoteDetail', { noteId: note.id });
   };
   const handleSave = (payload: {
     id?: string;
     title: string;
     content: string;
-    tags: string[];
+    tag: string;
   }) => {
     if (!payload.title) {
       Alert.alert('缺少标题', '请在保存前添加标题。');
@@ -292,7 +297,7 @@ export default function FilesScreen() {
           renderItem={({ item }) => (
             <NoteCard
               note={item}
-              onPress={handleOpenEdit}
+              onPress={handleOpenNote}
               onToggleFavorite={note => toggleFavorite(note.id)}
             />
           )}

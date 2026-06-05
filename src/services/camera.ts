@@ -45,9 +45,9 @@ export async function capturePhoto(): Promise<string | null> {
   const result = await launchCamera({
     mediaType: 'photo',
     includeBase64: true,
-    maxWidth: 2048,
-    maxHeight: 2048,
-    quality: 0.9,
+    maxWidth: 1024,
+    maxHeight: 1024,
+    quality: 0.5,
     saveToPhotos: false,
   });
 
@@ -76,9 +76,9 @@ export async function pickFromGallery(): Promise<string | null> {
   const result = await launchImageLibrary({
     mediaType: 'photo',
     includeBase64: true,
-    maxWidth: 2048,
-    maxHeight: 2048,
-    quality: 0.9,
+    maxWidth: 1024,
+    maxHeight: 1024,
+    quality: 0.5,
   });
 
   if (result.didCancel) return null;

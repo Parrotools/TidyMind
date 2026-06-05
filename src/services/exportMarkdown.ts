@@ -37,12 +37,12 @@ function slugify(text: string): string {
 export function noteToMarkdown(note: Note): string {
   const dateStr = formatDate(note.updatedAt);
   const tagLine =
-    note.tags.length > 0 ? `标签: ${note.tags.join(', ')} | ` : '';
+    note.tag ? `标签: ${note.tag} | ` : '';
 
   const frontMatter = [
     '---',
     `title: "${note.title}"`,
-    note.tags.length > 0 ? `tags: [${note.tags.join(', ')}]` : '',
+    note.tag ? `tag: "${note.tag}"` : '',
     `created: ${note.createdAt}`,
     `updated: ${note.updatedAt}`,
     note.isFavorite ? 'favorite: true' : '',
@@ -97,7 +97,7 @@ export function notesToMarkdown(notes: Note[]): string {
     .map((note) => {
       const dateStr = formatDate(note.updatedAt);
       const tagLine =
-        note.tags.length > 0 ? `标签: ${note.tags.join(', ')} | ` : '';
+        note.tag ? `标签: ${note.tag} | ` : '';
 
       return [
         `## ${note.title}`,
