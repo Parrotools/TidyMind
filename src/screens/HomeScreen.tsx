@@ -16,6 +16,15 @@ import { Note } from '../types/note';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 6) return '夜深了';
+  if (h < 12) return '早上好';
+  if (h < 14) return '中午好';
+  if (h < 18) return '下午好';
+  return '晚上好';
+}
+
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
   const { notes, isLoading, upsertNote, deleteNote, toggleFavorite } = useAppState();
@@ -51,7 +60,7 @@ export default function HomeScreen() {
         {/* ── Header ── */}
         <View style={S.head}>
           <View>
-            <Text style={S.greeting}>早上好</Text>
+            <Text style={S.greeting}>{getGreeting()}</Text>
             <Text style={S.date}>知识库 · {notes.length} 篇笔记</Text>
           </View>
           <Pressable style={S.avatar} onPress={()=>nav.navigate('Settings')}>
