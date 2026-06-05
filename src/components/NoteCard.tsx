@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BorderRadius, Colors, Spacing } from '../theme/designTokens';
 import { Note } from '../types/note';
 
@@ -55,6 +55,15 @@ export default function NoteCard({ note, onPress, onToggleFavorite }: NoteCardPr
         </Pressable>
       </View>
 
+      {/* Image thumbnail */}
+      {note.images && note.images.length > 0 && (
+        <Image
+          source={{ uri: note.images[0] }}
+          style={styles.thumbnail}
+          resizeMode="cover"
+        />
+      )}
+
       {/* Description preview */}
       <Text style={styles.preview} numberOfLines={2}>
         {previewLine || '暂无内容'}
@@ -108,6 +117,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
     lineHeight: 20,
+    marginBottom: Spacing.sm,
+  },
+  thumbnail: {
+    width: '100%',
+    height: 120,
+    borderRadius: BorderRadius.md,
     marginBottom: Spacing.sm,
   },
   bottomRow: {

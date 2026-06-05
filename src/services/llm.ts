@@ -153,22 +153,36 @@ export async function callLLMWithImage(
     { type: 'image_url', image_url: { url: imageB64 } },
   ];
 
-  const completion = await client.chat.completions.create(
-    {
-      model: 'Volc-DeepSeek-V3.2',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
-      ],
-      stream: false,
-      temperature: 0.5,
-      max_tokens: 2048,
-    },
-    {
-      query: { request_id: generateUUID() },
-    },
-  );
+  let completion: OpenAI.Chat.Completions.ChatCompletion;
+  try {
+    completion = (await client.chat.completions.create(
+      {
+        // Doubao-Seed-2.0-mini 对图片理解的支持更稳定（见 api.md python-requests 示例）
+        model: 'Doubao-Seed-2.0-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+        stream: false,
+        temperature: 0.5,
+        max_tokens: 2048,
+      },
+      { query: { request_id: generateUUID() } },
+    )) as OpenAI.Chat.Completions.ChatCompletion;
+  } catch (err: unknown) {
+    const apiErr = err as { status?: number; error?: { message?: string }; message?: string };
+    if (apiErr.status) {
+      throw parseLLMError(apiErr.status, apiErr.error?.message ?? apiErr.message ?? '');
+    }
+    throw err;
+  }
 
-  return (completion as OpenAI.Chat.Completions.ChatCompletion).choices?.[0]
-    ?.message?.content ?? '';
+  const msg = completion.choices?.[0]?.message;
+  // 优先 content，为空取 reasoning_content，都为空则抛错
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const text = msg?.content || (msg as any)?.reasoning_content || '';
+  if (!text) {
+    throw new Error('AI 未返回有效内容，请确认图片清晰可读或重试。');
+  }
+  return text;
 }

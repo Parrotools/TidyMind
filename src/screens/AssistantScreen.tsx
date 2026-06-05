@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +19,7 @@ import { useAppState } from '../state/AppState';
 import { useChat } from '../hooks/useChat';
 import { pickFromGallery, capturePhoto } from '../services/camera';
 import { AIMode, AI_MODES } from '../services/prompts';
+import { buildNoteIndex, ragSearch } from '../services/search';
 import { BorderRadius, Colors, Spacing } from '../theme/designTokens';
 import { ChatMessage } from '../types/chat';
 import { RootStackParamList } from '../navigation/types';
@@ -27,6 +28,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const QUICK_PROMPTS: Record<string, string[]> = {
   chat: ['总结最近的笔记', '创建学习计划', '提取关键行动'],
+  rag: ['本周学了什么', '关于Python的笔记有哪些', '帮我总结知识点'],
   translate: ['翻译为英文', '翻译为日文', '翻译为韩文'],
   writing: ['润色这段话', '帮我写一篇作文', '修改语法错误'],
   image: ['照片', '相册'],
@@ -35,8 +37,10 @@ const QUICK_PROMPTS: Record<string, string[]> = {
 
 export default function AssistantScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { chatMessages, addChatMessage, updateChatMessage, clearChat } =
-    useAppState();
+  const {
+    chatMessages, addChatMessage, updateChatMessage, clearChat,
+    notes, upsertNote,
+  } = useAppState();
   const {
     isStreaming,
     sendMessage,
@@ -52,6 +56,14 @@ export default function AssistantScreen() {
 
   const currentMode = AI_MODES.find(m => m.key === mode) ?? AI_MODES[0];
 
+  // 进入问答模式时预构建向量索引，仅在笔记数量变化时重建
+  useEffect(() => {
+    if (mode === 'rag' && notes.length > 0) {
+      buildNoteIndex(notes).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, notes.length]);
+
   // ── 发送消息 ──────────────────────────────────────────────────────
 
   const handleSend = useCallback(async (text: string) => {
@@ -63,9 +75,12 @@ export default function AssistantScreen() {
       await handleSendImage(trimmed, attachedImage);
       return;
     }
-
     if (mode === 'generate') {
       await handleGenerateImage(trimmed);
+      return;
+    }
+    if (mode === 'rag' && notes.length > 0) {
+      await handleRagQuery(trimmed);
       return;
     }
 
@@ -82,32 +97,50 @@ export default function AssistantScreen() {
     }, mode);
 
     scrollToBottom();
-  }, [mode, attachedImage, isStreaming, chatMessages, addChatMessage, updateChatMessage, sendMessage]);
+  }, [mode, attachedImage, isStreaming, chatMessages, notes, addChatMessage, updateChatMessage, sendMessage]);
 
-  const handleSendImage = async (text: string, imageB64: string) => {
+  const handleSendImage = useCallback(async (text: string, imageB64: string) => {
     addChatMessage('user', text || '请分析这张图片', imageB64);
     setAttachedImage(null);
     const aiMsg = addChatMessage('assistant', '正在分析图片...');
-
     await sendImageMessage(
-      text || '请分析这张图片的内容',
-      imageB64,
-      (fullText, isDone) => updateChatMessage(aiMsg.id, fullText),
+      text || '请分析这张图片的内容', imageB64,
+      (fullText, _isDone) => updateChatMessage(aiMsg.id, fullText),
     );
     scrollToBottom();
-  };
+  }, [addChatMessage, updateChatMessage, sendImageMessage]);
 
-  const handleGenerateImage = async (text: string) => {
+  const handleRagQuery = useCallback(async (query: string) => {
+    addChatMessage('user', `📚 ${query}`);
+    const aiMsg = addChatMessage('assistant', '正在检索笔记并生成回答...');
+    try {
+      const result = await ragSearch(query, notes);
+      const src = result.sources.map(s => `- 《${s.title}》`).join('\n');
+      updateChatMessage(aiMsg.id, `${result.answer}\n\n---\n📖 参考来源：\n${src}`);
+    } catch (err: unknown) {
+      updateChatMessage(aiMsg.id, `[错误] ${(err as Error).message}`);
+    }
+    scrollToBottom();
+  }, [addChatMessage, updateChatMessage, notes]);
+
+  const handleGenerateImage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
     setInput('');
     addChatMessage('user', `🎨 ${text}`);
     const aiMsg = addChatMessage('assistant', '正在构思画面（约需10-30秒）...');
-
-    const result = await generateImage(text, (fullText, isDone) => {
+    const result = await generateImage(text, (fullText, _isDone) => {
       updateChatMessage(aiMsg.id, fullText);
     });
+    // 如果确实生成了图片，保存为笔记
+    if (result.imageUrl) {
+      upsertNote({
+        title: `🎨 ${text.slice(0, 20)}`,
+        content: `![AI生成图片](${result.imageUrl})\n\n绘图提示词: ${result.prompt}`,
+        tags: ['AI绘图'],
+      });
+    }
     scrollToBottom();
-  };
+  }, [isStreaming, addChatMessage, updateChatMessage, generateImage, upsertNote]);
 
   // ── 模式切换 ──────────────────────────────────────────────────────
 

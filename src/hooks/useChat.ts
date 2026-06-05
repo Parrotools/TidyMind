@@ -17,7 +17,8 @@ import {
   IMAGE_GENERATION_PROMPT,
   AIMode,
 } from '../services/prompts';
-import { sanitizeOutput } from '../services/llm.errors';
+import { sanitizeOutput } from '../services/moderation';
+import { moderateText } from '../services/moderation';
 import { ChatMessage } from '../types/chat';
 
 export type StreamingState = {
@@ -48,6 +49,18 @@ export function useChat() {
       onUpdate: (fullText: string, isDone: boolean) => void,
       mode: AIMode = 'chat',
     ): Promise<string> => {
+      // 阶段 0：内容安全审核
+      const modResult = moderateText(userMessage);
+      if (!modResult.passed) {
+        const errMsg = `[内容安全] ${modResult.reason}`;
+        onUpdate(errMsg, true);
+        return errMsg;
+      }
+      if (modResult.level === 'suspicious') {
+        // 疑似内容 — 先发警告但允许继续
+        onUpdate(`⚠️ ${modResult.reason}\n\n`, false);
+      }
+
       // 预检查：AppKey 是否已配置
       if (
         !LLM_API_CONFIG.appKey ||
@@ -82,7 +95,6 @@ export function useChat() {
       let fullText = '';
 
       try {
-        // React Native fetch 不支持 SSE 流式，使用非流式模式
         const response = await callLLM({
           model: DEFAULT_MODEL,
           messages,
@@ -90,22 +102,18 @@ export function useChat() {
           signal: controller.signal,
         });
 
-        fullText = response;
-
-        const sanitized = sanitizeOutput(fullText);
-        setStreamingState({ isStreaming: false, streamingText: '' });
-        onUpdate(sanitized, true);
-        return sanitized;
+        fullText = sanitizeOutput(response);
+        onUpdate(fullText, true);
+        return fullText;
       } catch (err: unknown) {
         if ((err as Error).name === 'AbortError') {
-          setStreamingState({ isStreaming: false, streamingText: '' });
           return fullText;
         }
-
         const errorMsg = `[错误] ${(err as Error).message}`;
-        setStreamingState({ isStreaming: false, streamingText: '' });
         onUpdate(errorMsg, true);
         return errorMsg;
+      } finally {
+        setStreamingState({ isStreaming: false, streamingText: '' });
       }
     },
     [],
@@ -135,23 +143,20 @@ export function useChat() {
       }
 
       setStreamingState({ isStreaming: true, streamingText: '' });
-
       try {
         const response = await callLLMWithImage(
           userText || '请分析这张图片的内容，提取其中的关键信息。',
-          imageB64,
-          IMAGE_ANALYSIS_PROMPT,
+          imageB64, IMAGE_ANALYSIS_PROMPT,
         );
-
         const sanitized = sanitizeOutput(response);
-        setStreamingState({ isStreaming: false, streamingText: '' });
         onUpdate(sanitized, true);
         return sanitized;
       } catch (err: unknown) {
         const errorMsg = `[错误] ${(err as Error).message}`;
-        setStreamingState({ isStreaming: false, streamingText: '' });
         onUpdate(errorMsg, true);
         return errorMsg;
+      } finally {
+        setStreamingState({ isStreaming: false, streamingText: '' });
       }
     },
     [],
@@ -167,46 +172,38 @@ export function useChat() {
     async (
       userText: string,
       onUpdate: (fullText: string, isDone: boolean) => void,
-    ): Promise<string> => {
+    ): Promise<{ text: string; imageUrl: string | null; prompt: string }> => {
       if (
         !LLM_API_CONFIG.appKey ||
         LLM_API_CONFIG.appKey === 'your_app_key_here'
       ) {
         const errMsg = '[错误] 请先配置 AppKey。';
         onUpdate(errMsg, true);
-        return errMsg;
+        return { text: errMsg, imageUrl: null, prompt: '' };
       }
 
       setStreamingState({ isStreaming: true, streamingText: '' });
-
       try {
-        // 步骤 1：LLM 将用户描述转化为高质量绘图 Prompt
-        const promptResponse = await callLLM({
+        const prompt = await callLLM({
           model: DEFAULT_MODEL,
           messages: [
             { role: 'system', content: IMAGE_GENERATION_PROMPT },
             { role: 'user', content: userText },
           ],
-          stream: false,
-          temperature: 0.7,
-          maxTokens: 500,
+          stream: false, temperature: 0.7, maxTokens: 500,
         });
-
-        // 步骤 2：调用 Vivo 图片生成 API
-        const generatedImage = await callImageGeneration(promptResponse);
-
-        const result = generatedImage
-          ? `[🎨 图片已生成]\n\n绘图提示词: ${promptResponse}\n\n图片已保存到笔记中。`
-          : `[🎨 绘图 Prompt]\n\n${promptResponse}\n\n(图片生成 API 待接入)`;
-
-        setStreamingState({ isStreaming: false, streamingText: '' });
-        onUpdate(result, true);
-        return generatedImage ?? promptResponse;
+        const imageUrl = await callImageGeneration(prompt);
+        const text = imageUrl
+          ? `[🎨 图片已生成]\n\n绘图提示词: ${prompt}\n\n✅ 图片已自动保存为笔记。`
+          : `[🎨 绘图 Prompt]\n\n${prompt}\n\n⚠️ 图片生成超时，请重试。`;
+        onUpdate(text, true);
+        return { text, imageUrl, prompt };
       } catch (err: unknown) {
         const errorMsg = `[错误] ${(err as Error).message}`;
-        setStreamingState({ isStreaming: false, streamingText: '' });
         onUpdate(errorMsg, true);
-        return errorMsg;
+        return { text: errorMsg, imageUrl: null, prompt: '' };
+      } finally {
+        setStreamingState({ isStreaming: false, streamingText: '' });
       }
     },
     [],

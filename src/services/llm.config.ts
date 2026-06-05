@@ -29,6 +29,7 @@ export const LLM_API_CONFIG: {
 /** 设置 AppKey（App 启动时从 AsyncStorage 或 .env 文件中读取后调用） */
 export function setLLMAppKey(key: string): void {
   LLM_API_CONFIG.appKey = key;
+  resetLLMClient(); // 强制重建客户端以使用新 Key
 }
 
 /** 设置默认模型 */
